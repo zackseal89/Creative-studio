@@ -36,4 +36,5 @@ export interface ScriptState {
   plan: ContentPlan | null;
   script: string | null;
   logs: LogLine[];
+  revisions?: any[];
 }

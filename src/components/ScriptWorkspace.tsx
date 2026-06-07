@@ -27,6 +27,8 @@ interface ScriptWorkspaceProps {
   onReset: () => void;
   isScriptingLoading: boolean;
   addLog?: (msg: string, type?: 'info' | 'success' | 'warning' | 'thinking') => void;
+  revisions: RevisionItem[];
+  setRevisions: React.Dispatch<React.SetStateAction<RevisionItem[]>>;
 }
 
 interface RevisionItem {
@@ -43,14 +45,15 @@ export default function ScriptWorkspace({
   onRegenerate,
   onReset,
   isScriptingLoading,
-  addLog
+  addLog,
+  revisions = [],
+  setRevisions
 }: ScriptWorkspaceProps) {
   const [viewMode, setViewMode] = useState<'preview' | 'raw' | 'prompts' | 'revisions'>('preview');
   const [isCopied, setIsCopied] = useState(false);
   const [selectedTone, setSelectedTone] = useState<string>('Informative/Documentary');
   
   // Custom Rev History State engine
-  const [revisions, setRevisions] = useState<RevisionItem[]>([]);
   const [selectedRevId, setSelectedRevId] = useState<string | null>(null);
   
   const isInternalTypingChange = useRef(false);

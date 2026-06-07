@@ -45,6 +45,7 @@ interface CloudProductionManagerProps {
   currentPlan: ContentPlan | null;
   currentScript: string | null;
   currentLogs: LogLine[];
+  currentRevisions: any[];
   onLoadProject: (state: ScriptState) => void;
   onResetWorkspace: () => void;
   addLog: (message: string, type: 'info' | 'success' | 'warning' | 'thinking') => void;
@@ -61,6 +62,7 @@ interface SavedProject {
   plan: any;
   script: string | null;
   logs: any[];
+  revisions: any[];
   createdAt: any;
   updatedAt: any;
 }
@@ -72,6 +74,7 @@ export default function CloudProductionManager({
   currentPlan,
   currentScript,
   currentLogs,
+  currentRevisions = [],
   onLoadProject,
   onResetWorkspace,
   addLog,
@@ -198,6 +201,7 @@ export default function CloudProductionManager({
           plan: data.plan,
           script: data.script,
           logs: data.logs || [],
+          revisions: data.revisions || [],
           createdAt: data.createdAt,
           updatedAt: data.updatedAt
         });
@@ -243,6 +247,7 @@ export default function CloudProductionManager({
         plan: currentPlan,
         script: currentScript,
         logs: currentLogs,
+        revisions: currentRevisions,
         createdAt: timestampNow,
         updatedAt: timestampNow
       };
@@ -267,7 +272,8 @@ export default function CloudProductionManager({
         selectedHookIndex: 0,
         plan: currentPlan,
         script: currentScript,
-        logs: currentLogs
+        logs: currentLogs,
+        revisions: currentRevisions
       }));
 
       // Refresh list
@@ -290,7 +296,8 @@ export default function CloudProductionManager({
       research: proj.research,
       plan: proj.plan,
       script: proj.script,
-      logs: proj.logs || []
+      logs: proj.logs || [],
+      revisions: proj.revisions || []
     });
 
     addLog(`Successfully restored production session: "${proj.topic}" from Cloud Database.`, "success");

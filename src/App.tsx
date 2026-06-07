@@ -47,6 +47,7 @@ export default function App() {
   const [plan, setPlan] = useState<ContentPlan | null>(null);
   const [script, setScript] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogLine[]>([]);
+  const [revisions, setRevisions] = useState<any[]>([]);
   const [isDriveOpen, setIsDriveOpen] = useState<boolean>(false);
   const [isCloudOpen, setIsCloudOpen] = useState<boolean>(false);
   const [isConsoleOpen, setIsConsoleOpen] = useState<boolean>(true);
@@ -91,6 +92,7 @@ export default function App() {
         if (data.plan) setPlan(data.plan);
         if (data.script) setScript(data.script);
         if (data.logs) setLogs(data.logs);
+        if (data.revisions) setRevisions(data.revisions);
 
         if (data.script) {
           setActiveStep(3);
@@ -106,6 +108,20 @@ export default function App() {
       console.error("Failed to restore applet state", e);
     }
   }, []);
+
+  // Sync revisions with local storage cache when they change
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem('studio_agent_state');
+      if (cached) {
+        const data = JSON.parse(cached);
+        data.revisions = revisions;
+        localStorage.setItem('studio_agent_state', JSON.stringify(data));
+      }
+    } catch (e) {
+      console.warn("Failed to sync revisions to cache", e);
+    }
+  }, [revisions]);
 
   // Fetch home projects from Firestore on-demand
   const fetchHomeProjects = async (uid: string) => {
@@ -153,7 +169,8 @@ export default function App() {
     hookIdx: number | null,
     planData: ContentPlan | null,
     scriptText: string | null,
-    currentLogs: LogLine[]
+    currentLogs: LogLine[],
+    revisionsList?: any[]
   ) => {
     try {
       localStorage.setItem('studio_agent_state', JSON.stringify({
@@ -163,7 +180,8 @@ export default function App() {
         selectedHookIndex: hookIdx,
         plan: planData,
         script: scriptText,
-        logs: currentLogs
+        logs: currentLogs,
+        revisions: revisionsList !== undefined ? revisionsList : revisions
       }));
     } catch (e) {
       console.warn("Storage write failed", e);
@@ -696,6 +714,7 @@ export default function App() {
                               setPlan(proj.plan || null);
                               setScript(proj.script || null);
                               setLogs(proj.logs || []);
+                              setRevisions(proj.revisions || []);
                               
                               if (proj.script) {
                                 setActiveStep(3);
@@ -713,7 +732,8 @@ export default function App() {
                                 research: proj.research || null,
                                 plan: proj.plan || null,
                                 script: proj.script || null,
-                                logs: proj.logs || []
+                                logs: proj.logs || [],
+                                revisions: proj.revisions || []
                               }));
 
                               addLog(`Synchronized with cloud project: "${proj.topic}"`, "success");
@@ -853,6 +873,8 @@ export default function App() {
                       onReset={handleResetWorkspace}
                       isScriptingLoading={isScriptingLoading}
                       addLog={addLog}
+                      revisions={revisions}
+                      setRevisions={setRevisions}
                     />
                   ) : (
                     <PlanningWorkspace
@@ -900,6 +922,7 @@ export default function App() {
               currentPlan={plan}
               currentScript={script}
               currentLogs={logs}
+              currentRevisions={revisions}
               onLoadProject={(state) => {
                 setTopic(state.topic || '');
                 setPhase(state.phase || 'idle');
@@ -907,6 +930,7 @@ export default function App() {
                 setPlan(state.plan || null);
                 setScript(state.script || null);
                 setLogs(state.logs || []);
+                setRevisions(state.revisions || []);
                 if (state.script) {
                   setActiveStep(3);
                 } else if (state.plan) {
@@ -927,6 +951,7 @@ export default function App() {
                 setPlan(null);
                 setScript(null);
                 setLogs([]);
+                setRevisions([]);
                 setActiveStep(1);
                 localStorage.removeItem('studio_agent_state');
               }}
