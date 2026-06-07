@@ -19,6 +19,7 @@ import GoogleDriveExplorer from './components/GoogleDriveExplorer';
 import AudioOrchestrator from './components/AudioOrchestrator';
 import ImageAnalyst from './components/ImageAnalyst';
 import CloudProductionManager from './components/CloudProductionManager';
+import CreatorAgentChatbot from './components/CreatorAgentChatbot';
 import { Play, Sparkles, BookOpen, FileText, CheckCircle, Flame, Server, Cloud, LogIn, Database, Trash2, ArrowRight, RefreshCw } from 'lucide-react';
 import { auth, db, googleSignIn } from './firebase';
 import { onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
@@ -944,6 +945,30 @@ export default function App() {
           onToggleOpen={() => setIsConsoleOpen(!isConsoleOpen)} 
         />
       </footer>
+
+      {/* State-synchronizing AI Core Administrator Copilot */}
+      <CreatorAgentChatbot 
+        topic={topic}
+        setTopic={setTopic}
+        phase={phase}
+        setPhase={setPhase}
+        activeModule={activeModule}
+        setActiveModule={setActiveModule}
+        activeStep={activeStep}
+        setActiveStep={setActiveStep}
+        script={script}
+        setScript={setScript}
+        research={research}
+        setResearch={setResearch}
+        plan={plan}
+        setPlan={setPlan}
+        addLog={addLog}
+        currentUser={currentUser}
+        handleDeployResearch={handleDeployResearch}
+        handleCompileScript={handleCompileScript}
+        handleCancelAndReset={handleCancelAndReset}
+        logs={logs}
+      />
 
       {/* Elegant Custom In-App Confirm modal overlay */}
       {customConfirm.isOpen && (

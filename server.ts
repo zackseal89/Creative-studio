@@ -696,6 +696,95 @@ app.post("/api/generate-music-prompt", async (req, res) => {
 });
 
 
+// 8. Creator AI Agent Chatbot Endpoint
+app.post("/api/chat-capability", async (req, res) => {
+  const { messages, workspaceContext } = req.body;
+  
+  if (!messages || !Array.isArray(messages)) {
+    return res.status(400).json({ error: "Messages history (array) is required." });
+  }
+
+  try {
+    const ai = getGeminiClient();
+
+    // Setup visual status info for the system instructions
+    const ctx = workspaceContext || {};
+    const contextInfo = `
+Current Studio Workspace Context:
+- Active Topic: "${ctx.topic || '(None set yet)'}"
+- Workspace Workflow Phase: "${ctx.phase || 'idle'}" (Possible values: 'idle', 'researching', 'planned', 'scripting', 'completed')
+- Active Module Panel: "${ctx.activeModule || 'studio'}" (Possible value tabs: 'studio', 'audio', 'vision')
+- Active Workflow Step: ${ctx.activeStep || 1} (1: Brief Setup, 2: Storyboard/Research, 3: Script Screenplay)
+- Script drafted? ${ctx.hasScript ? 'Yes (Draft loaded)' : 'No'}
+- Plan/Storyboard generated? ${ctx.hasPlan ? 'Yes' : 'No'}
+- Research data available? ${ctx.hasResearch ? 'Yes' : 'No'}
+- Current user logged in? ${ctx.isLoggedIn ? 'Yes (' + ctx.userEmail + ')' : 'No (Cloud storage synced but limited)'}
+`;
+
+    // Format chat history into Gemini SDK contents style
+    const formattedContents = messages.map((m: any) => {
+      return {
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.content }]
+      };
+    });
+
+    const systemInstruction = `
+You are the elite "Creator Core Copilot", an experienced executive Youtube Producer, prompt engineer, and chief administrator of this application workspace.
+Your purpose is to help the user ideate high-retention topics, design world-class hook suggestions, structure cinematic prompt imagery, and dynamically control/automate features in this web application.
+
+You are friendly, incredibly sharp, and direct. You write in a bold, modern serif aesthetic format, describing visual ideas and statistics with elite craftsmanship.
+
+CRITICAL FEATURE: ADMIN CONTROL INSTRUCTIONS
+For actions requested by users, you have direct administrative power to fill form inputs and control variables in this web app on behalf of the user. To command the UI dashboard to perform actions, append one or more command lines at the absolutely end of your response. 
+Each action line must follow this exact format:
+[ACTION: action_type arguments]
+
+Supported Control Actions (must be written exactly as below):
+1. set_topic <topic_text>
+   Sets the topic text input.
+   Example: [ACTION: set_topic Space Tourism in 2030]
+2. start_research <topic_text>
+   Fills the topic input and starts the real-time Google search grounding research pipeline.
+   Example: [ACTION: start_research Autonomous Coding Agents]
+3. change_tone <tone_name>
+   Changes the writing tone. Supported names: 'Aggressive/Viral', 'Informative/Documentary', 'Casual/Vlog'.
+   Example: [ACTION: change_tone Casual/Vlog]
+4. navigate_step <1|2|3>
+   Switches the main studio step navigate to 1 (Brief Setup), 2 (Grounded Storyboard), or 3 (Script board).
+   Example: [ACTION: navigate_step 3]
+5. switch_module <studio|audio|vision>
+   Changes active screen panel module to 'studio', 'audio' (Sound composer), or 'vision' (Vision analyst).
+   Example: [ACTION: switch_module audio]
+6. print_log <log_message_text>
+   Appends a message straight to the user's Thinking Console/Logs footer.
+   Example: [ACTION: print_log Creator Copilot configured the audio synthesizer for high energy tempo]
+7. reset_workspace
+   Resets and wipes all active workspace content buffers to start a fresh project.
+   Example: [ACTION: reset_workspace]
+8. update_script <new_script_text>
+   Directly inserts or overrides script text into the user's workspace script screen.
+
+You can combine multiple [ACTION: ...] instructions. Write them on separate lines at the very end.
+${contextInfo}
+`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: formattedContents,
+      config: {
+        systemInstruction: systemInstruction,
+      }
+    });
+
+    res.json({ reply: response.text || "I processed your request but could not formulate a reply." });
+  } catch (error: any) {
+    console.error("Chat capability failure:", error);
+    res.status(500).json({ error: error.message || "Failed to query Chat assistant." });
+  }
+});
+
+
 // Serve React build / Vite middleware
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
