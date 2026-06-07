@@ -16,11 +16,17 @@ import ResearchSidebar from './components/ResearchSidebar';
 import PlanningWorkspace from './components/PlanningWorkspace';
 import ScriptWorkspace from './components/ScriptWorkspace';
 import GoogleDriveExplorer from './components/GoogleDriveExplorer';
+import AudioOrchestrator from './components/AudioOrchestrator';
+import ImageAnalyst from './components/ImageAnalyst';
+import CloudProductionManager from './components/CloudProductionManager';
 import { Play, Sparkles, BookOpen, FileText, CheckCircle, Flame, Server, Cloud } from 'lucide-react';
 
 export default function App() {
   // Topic input text state
   const [topic, setTopic] = useState<string>('');
+  
+  // Active dashboard Module
+  const [activeModule, setActiveModule] = useState<'studio' | 'audio' | 'vision'>('studio');
   
   // Script Workspace States
   const [phase, setPhase] = useState<WorkflowPhase>('idle');
@@ -30,6 +36,8 @@ export default function App() {
   const [script, setScript] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [isDriveOpen, setIsDriveOpen] = useState<boolean>(false);
+  const [isCloudOpen, setIsCloudOpen] = useState<boolean>(false);
+  const [isConsoleOpen, setIsConsoleOpen] = useState<boolean>(true);
 
   // Spinners
   const [isResearchLoading, setIsResearchLoading] = useState<boolean>(false);
@@ -212,20 +220,23 @@ export default function App() {
   };
 
   // Run Phase 3: Compile Approved story outlines, write high retention full script
-  const handleCompileScript = async () => {
+  const handleCompileScript = async (tone?: string) => {
     if (!research || !plan) return;
 
     setPhase('scripting');
     setIsScriptingLoading(true);
     addLog("Human-in-the-Loop approval registered.", "success");
+    if (tone) {
+      addLog(`Selected tone directive: "${tone}" style matching.`, "info");
+    }
     addLog("Bundling selected hooks, dynamic briefs, and structural blocks...", "info");
-    addLog("Instructing Creative Youtube Writer model to write a detailed script incorporating High-Retention Frameworks.", "thinking");
+    addLog(`Instructing Creative Youtube Writer model to write a detailed script with "${tone || 'Informative/Documentary'}" tone and pacing.`, "thinking");
 
     try {
       const response = await fetch('/api/script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, research, plan })
+        body: JSON.stringify({ topic, research, plan, tone })
       });
 
       if (!response.ok) {
@@ -302,13 +313,30 @@ export default function App() {
         <div className="flex items-center space-x-4">
           <button 
             type="button"
-            onClick={() => setIsDriveOpen(!isDriveOpen)}
+            onClick={() => {
+              setIsDriveOpen(!isDriveOpen);
+              setIsCloudOpen(false);
+            }}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-none border text-[10px] uppercase tracking-widest font-extrabold cursor-pointer transition-all ${
               isDriveOpen ? 'bg-[#F27D26] border-[#F27D26] text-black' : 'border-[#222] text-[#888] hover:text-white hover:border-[#333]'
             }`}
           >
             <Cloud className={`w-3.5 h-3.5 ${isDriveOpen ? 'text-black' : 'text-[#F27D26]'}`} />
             <span>Drive Library</span>
+          </button>
+
+          <button 
+            type="button"
+            onClick={() => {
+              setIsCloudOpen(!isCloudOpen);
+              setIsDriveOpen(false);
+            }}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-none border text-[10px] uppercase tracking-widest font-extrabold cursor-pointer transition-all ${
+              isCloudOpen ? 'bg-[#F27D26] border-[#F27D26] text-black' : 'border-[#222] text-[#888] hover:text-white hover:border-[#333]'
+            }`}
+          >
+            <Server className={`w-3.5 h-3.5 ${isCloudOpen ? 'text-black' : 'text-[#F27D26]'}`} />
+            <span>Cloud Backups</span>
           </button>
 
           <span className="text-[9px] bg-[#1A1A1A] px-2.5 py-1 rounded-none text-[#888] border border-[#222] uppercase tracking-widest font-mono select-none">
@@ -391,27 +419,71 @@ export default function App() {
 
               {/* Split layout: 2. Core approved script blocks / planner workspaces on the right (flexible) */}
               <div className="flex-1 bg-[#0A0A0A] flex flex-col overflow-hidden">
-                {script ? (
-                  <ScriptWorkspace
-                    script={script}
-                    onUpdateScript={handleUpdateScript}
-                    onRegenerate={() => {
-                      addLog("Regenerating Cinematic YouTube Script text with Gemini API...", "thinking");
-                      handleCompileScript();
-                    }}
-                    onReset={handleResetWorkspace}
-                    isScriptingLoading={isScriptingLoading}
-                  />
-                ) : (
-                  <PlanningWorkspace
-                    plan={plan}
-                    onUpdatePlan={handleUpdatePlan}
-                    onApprove={handleCompileScript}
-                    onRegenerate={handleRegenPlan}
-                    isPlanningLoading={isPlanningLoading}
-                    isScriptingLoading={isScriptingLoading}
-                  />
-                )}
+                
+                {/* Module switcher tab subnav */}
+                <div className="bg-[#0D0D0D] border-b border-[#222] px-6 py-2.5 flex items-center justify-between shrink-0">
+                  <div className="flex gap-2.5">
+                    <button 
+                      onClick={() => setActiveModule('studio')}
+                      className={`px-4 py-1.5 text-[10px] font-extrabold tracking-widest uppercase cursor-pointer rounded-none transition-all ${
+                        activeModule === 'studio' 
+                          ? 'text-[#F27D26] border-b-2 border-[#F27D26] font-black' 
+                          : 'text-zinc-500 hover:text-white'
+                      }`}
+                    >
+                      📝 Narrative Studio
+                    </button>
+                    <button 
+                      onClick={() => setActiveModule('audio')}
+                      className={`px-4 py-1.5 text-[10px] font-extrabold tracking-widest uppercase cursor-pointer rounded-none transition-all ${
+                        activeModule === 'audio' 
+                          ? 'text-[#F27D26] border-b-2 border-[#F27D26] font-black' 
+                          : 'text-zinc-500 hover:text-white'
+                      }`}
+                    >
+                      🔊 Sound & SFX Composer
+                    </button>
+                    <button 
+                      onClick={() => setActiveModule('vision')}
+                      className={`px-4 py-1.5 text-[10px] font-extrabold tracking-widest uppercase cursor-pointer rounded-none transition-all ${
+                        activeModule === 'vision' 
+                          ? 'text-[#F27D26] border-b-2 border-[#F27D26] font-black' 
+                          : 'text-zinc-500 hover:text-white'
+                      }`}
+                    >
+                      👁️ Storyboard Vision Analyst
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex-grow overflow-hidden">
+                  {activeModule === 'audio' ? (
+                    <AudioOrchestrator addLog={addLog} />
+                  ) : activeModule === 'vision' ? (
+                    <ImageAnalyst addLog={addLog} />
+                  ) : script ? (
+                    <ScriptWorkspace
+                      script={script}
+                      onUpdateScript={handleUpdateScript}
+                      onRegenerate={(tone) => {
+                        addLog(`Regenerating Cinematic YouTube Script with Gemini in "${tone}" style...`, "thinking");
+                        handleCompileScript(tone);
+                      }}
+                      onReset={handleResetWorkspace}
+                      isScriptingLoading={isScriptingLoading}
+                    />
+                  ) : (
+                    <PlanningWorkspace
+                      plan={plan}
+                      onUpdatePlan={handleUpdatePlan}
+                      onApprove={handleCompileScript}
+                      onRegenerate={handleRegenPlan}
+                      isPlanningLoading={isPlanningLoading}
+                      isScriptingLoading={isScriptingLoading}
+                    />
+                  )}
+                </div>
+
               </div>
             </div>
           )}
@@ -433,11 +505,51 @@ export default function App() {
             />
           </div>
         )}
+
+        {isCloudOpen && (
+          <div className="w-[340px] shrink-0 border-l border-[#222] bg-[#0F0F0F] h-full overflow-hidden relative">
+            <CloudProductionManager 
+              currentTopic={topic}
+              currentPhase={phase}
+              currentResearch={research}
+              currentPlan={plan}
+              currentScript={script}
+              currentLogs={logs}
+              onLoadProject={(state) => {
+                setTopic(state.topic || '');
+                setPhase(state.phase || 'idle');
+                setResearch(state.research || null);
+                setPlan(state.plan || null);
+                setScript(state.script || null);
+                setLogs(state.logs || []);
+                // Update localStorage cache
+                localStorage.setItem('studio_agent_state', JSON.stringify(state));
+              }}
+              onResetWorkspace={() => {
+                setTopic('');
+                setPhase('idle');
+                setResearch(null);
+                setSelectedHookIndex(0);
+                setPlan(null);
+                setScript(null);
+                setLogs([]);
+                localStorage.removeItem('studio_agent_state');
+              }}
+              addLog={addLog}
+              onClose={() => setIsCloudOpen(false)}
+            />
+          </div>
+        )}
       </main>
 
       {/* Telemetry Console footer pinned strictly at the bottom */}
-      <footer className="h-56 bg-[#000] border-t border-[#222] shrink-0">
-        <ThinkingConsole logs={logs} onClear={() => setLogs([])} />
+      <footer className={`${isConsoleOpen ? 'h-56' : 'h-10'} bg-[#000] border-t border-[#222] shrink-0 transition-all duration-300 relative`}>
+        <ThinkingConsole 
+          logs={logs} 
+          onClear={() => setLogs([])} 
+          isOpen={isConsoleOpen} 
+          onToggleOpen={() => setIsConsoleOpen(!isConsoleOpen)} 
+        />
       </footer>
     </div>
   );

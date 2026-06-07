@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Eye, 
   Code, 
@@ -14,13 +14,16 @@ import {
   Layers, 
   Monitor, 
   Smartphone, 
-  Tv 
+  Tv,
+  Volume2,
+  Play,
+  Square
 } from 'lucide-react';
 
 interface ScriptWorkspaceProps {
   script: string | null;
   onUpdateScript: (updatedScript: string) => void;
-  onRegenerate: () => void;
+  onRegenerate: (tone: string) => void;
   onReset: () => void;
   isScriptingLoading: boolean;
 }
@@ -34,6 +37,102 @@ export default function ScriptWorkspace({
 }: ScriptWorkspaceProps) {
   const [viewMode, setViewMode] = useState<'preview' | 'raw' | 'prompts'>('preview');
   const [isCopied, setIsCopied] = useState(false);
+  const [selectedTone, setSelectedTone] = useState<string>('Informative/Documentary');
+  
+  // TTS State variables
+  const [playingDialogueIdx, setPlayingDialogueIdx] = useState<number | null>(null);
+  const [selectedVoice, setSelectedVoice] = useState<string>('Zephyr'); // 'Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const handleSpeakDialogue = async (text: string, index: number) => {
+    // If already playing this line, stop or pause it
+    if (playingDialogueIdx === index) {
+      if (activeAudioRef.current) {
+        activeAudioRef.current.pause();
+      }
+      window.speechSynthesis.cancel();
+      setPlayingDialogueIdx(null);
+      return;
+    }
+
+    // Stop current animations or voices
+    if (activeAudioRef.current) {
+      activeAudioRef.current.pause();
+    }
+    window.speechSynthesis.cancel();
+    setPlayingDialogueIdx(index);
+
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, voice: selectedVoice })
+      });
+      
+      const data = await res.json();
+      if (!res.ok || data.useBrowserSpeech || data.error) {
+        throw new Error(data.error || "Engagement limit reached - engaging browser speech synthesized engine.");
+      }
+
+      // Base64 audio playback
+      const base64Audio = data.audio;
+      const binary = atob(base64Audio);
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: 'audio/mp3' });
+      const blobUrl = URL.createObjectURL(blob);
+
+      const audio = new Audio(blobUrl);
+      activeAudioRef.current = audio;
+      audio.play();
+
+      audio.onended = () => {
+        setPlayingDialogueIdx(null);
+        URL.revokeObjectURL(blobUrl);
+      };
+      audio.onerror = () => {
+        setPlayingDialogueIdx(null);
+        URL.revokeObjectURL(blobUrl);
+      };
+
+    } catch (err) {
+      console.warn("Server TTS redirected to speech synthesis: ", err);
+      const utterance = new SpeechSynthesisUtterance(text);
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        if (selectedVoice === 'Puck' || selectedVoice === 'Charon') {
+          const maleVoice = voices.find(v => v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('google us english') || v.name.toLowerCase().includes('microsoft david'));
+          if (maleVoice) utterance.voice = maleVoice;
+        } else {
+          const femaleVoice = voices.find(v => v.name.toLowerCase().includes('female') || v.name.toLowerCase().includes('google uk english female') || v.name.toLowerCase().includes('zira'));
+          if (femaleVoice) utterance.voice = femaleVoice;
+        }
+      }
+      
+      utterance.rate = 1.05;
+      utterance.pitch = selectedVoice === 'Puck' ? 0.9 : selectedVoice === 'Kore' ? 1.15 : 1.0;
+      
+      utterance.onend = () => {
+        setPlayingDialogueIdx(null);
+      };
+      utterance.onerror = () => {
+        setPlayingDialogueIdx(null);
+      };
+      
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  // Clean play on unmount
+  useEffect(() => {
+    return () => {
+      if (activeAudioRef.current) activeAudioRef.current.pause();
+      window.speechSynthesis.cancel();
+    };
+  }, []);
   
   // States for Prompt Hub
   const [enhancedPrompts, setEnhancedPrompts] = useState<Record<string, string>>({});
@@ -190,10 +289,49 @@ export default function ScriptWorkspace({
 
       // Voiceover dialogue style
       if (trimmed.includes('Speaker:') || trimmed.startsWith('Speaker:') || trimmed.startsWith('Narrator:')) {
+        const dialogText = trimmed.replace(/Speaker:|Narrator:/i, '').trim();
+        const isCurrentlyPlaying = playingDialogueIdx === index;
+
         return (
-          <div key={index} className="bg-[#050505]/40 p-4 border border-[#222] rounded-none my-3 text-sm leading-relaxed text-zinc-300 select-text flex flex-col gap-1.5 shadow-sm">
-            <span className="text-[9px] font-bold tracking-widest text-[#F27D26] uppercase select-none">VOICEOVER DIALOGUE (HIGH RETENTION DRIVEN)</span>
-            <span className="text-[13px] text-zinc-100 leading-relaxed font-serif">{trimmed.replace(/Speaker:|Narrator:/i, '').trim()}</span>
+          <div key={index} className="bg-[#050505]/40 p-4 border border-[#222] rounded-none my-3 text-sm leading-relaxed text-zinc-300 select-text flex flex-col gap-2.5 shadow-sm relative group">
+            <div className="flex items-center justify-between pointer-events-none select-none">
+              <span className="text-[9px] font-bold tracking-widest text-[#F27D26] uppercase">VOICEOVER DIALOGUE (HIGH RETENTION DRIVEN)</span>
+              
+              {/* Animated Waveform when playing line */}
+              {isCurrentlyPlaying && (
+                <div className="flex items-center gap-0.5 h-3">
+                  <div className="w-[1.5px] bg-[#F27D26] h-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '0.6s' }}></div>
+                  <div className="w-[1.5px] bg-[#F27D26] h-[60%] animate-bounce" style={{ animationDelay: '150ms', animationDuration: '0.5s' }}></div>
+                  <div className="w-[1.5px] bg-[#F27D26] h-full animate-bounce" style={{ animationDelay: '300ms', animationDuration: '0.7s' }}></div>
+                  <div className="w-[1.5px] bg-[#F27D26] h-[30%] animate-bounce" style={{ animationDelay: '450ms', animationDuration: '0.4s' }}></div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-start justify-between gap-4">
+              <span className="text-[13px] text-zinc-100 leading-relaxed font-serif flex-1">{dialogText}</span>
+              
+              {/* Trigger TTS voice */}
+              <button
+                onClick={() => handleSpeakDialogue(dialogText, index)}
+                className={`py-1.5 px-3 border border-[#222] group-hover:border-[#F27D26]/40 hover:border-[#F27D26] bg-[#0A0A0A] text-[9px] font-mono font-extrabold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer text-[#888] hover:text-white transition-colors shrink-0 ${
+                  isCurrentlyPlaying ? 'border-[#F27D26] text-[#F27D26]' : ''
+                }`}
+                title="Synthesize and play speech narration"
+              >
+                {isCurrentlyPlaying ? (
+                  <>
+                    <Square className="w-2.5 h-2.5 fill-[#F27D26] text-[#F27D26]" />
+                    <span>Mute</span>
+                  </>
+                ) : (
+                  <>
+                    <Volume2 className="w-3 h-3 text-[#555] group-hover:text-[#F27D26]" />
+                    <span>Speak Line</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         );
       }
@@ -223,8 +361,8 @@ export default function ScriptWorkspace({
   return (
     <div className="bg-[#0A0A0A] border border-[#222] rounded-none overflow-hidden flex flex-col h-full shadow-sm relative">
       {/* Tab Header with dynamic switches */}
-      <div className="bg-[#0F0F0F] px-6 py-3 border-b border-[#222] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-4">
+      <div className="bg-[#0F0F0F] px-6 py-3 border-b border-[#222] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <span className="text-[#F27D26] text-xs animate-pulse">●</span>
             <h3 className="font-extrabold text-[11px] text-zinc-100 uppercase tracking-widest">03 . Script Board</h3>
@@ -269,6 +407,23 @@ export default function ScriptWorkspace({
             >
               <span>Markdown Source</span>
             </button>
+          </div>
+
+          {/* Unified Voice Selection Mode */}
+          <div className="flex items-center gap-2 bg-[#0A0A0A]/60 border border-[#222]/80 px-2.5 py-1 text-[9px] font-mono">
+            <Volume2 className="w-3.5 h-3.5 text-[#F27D26]" />
+            <span className="text-[#666] uppercase font-bold">Voice:</span>
+            <select
+              value={selectedVoice}
+              onChange={(e) => setSelectedVoice(e.target.value)}
+              className="bg-transparent text-zinc-300 font-extrabold text-[9px] outline-none border-none cursor-pointer uppercase tracking-widest"
+            >
+              <option value="Zephyr" className="bg-[#0A0A0A]">Zephyr (Spirited Lady)</option>
+              <option value="Kore" className="bg-[#0A0A0A]">Kore (Professional Reporter)</option>
+              <option value="Puck" className="bg-[#0A0A0A]">Puck (Fast Tech Vlog)</option>
+              <option value="Charon" className="bg-[#0A0A0A]">Charon (Deep Documentary)</option>
+              <option value="Fenrir" className="bg-[#0A0A0A]">Fenrir (High-Impact Epic)</option>
+            </select>
           </div>
         </div>
 
@@ -507,7 +662,7 @@ export default function ScriptWorkspace({
       </div>
 
       {/* Reset & Regen footer */}
-      <div className="bg-[#0F0F0F] px-6 py-4 border-t border-[#222] flex items-center justify-between">
+      <div className="bg-[#0F0F0F] px-6 py-4 border-t border-[#222] flex flex-col md:flex-row md:items-center justify-between gap-4">
         <button
           onClick={onReset}
           className="text-[#555] hover:text-[#CCC] text-[10px] font-bold uppercase tracking-widest cursor-pointer transition-colors"
@@ -515,13 +670,29 @@ export default function ScriptWorkspace({
           <span>← Reset Workspace</span>
         </button>
 
-        <button
-          onClick={onRegenerate}
-          className="flex items-center gap-1.5 bg-[#1A1A1A] border border-[#222] hover:border-[#F27D26]/70 hover:text-white text-[#666] font-extrabold text-[10px] uppercase tracking-widest py-2.5 px-4 rounded-none cursor-pointer transition-all"
-        >
-          <RefreshCw className="w-3 h-3 shrink-0 animate-pulse" />
-          <span>Regen Entire Video Script</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-mono font-extrabold text-[#666] uppercase">Script Tone:</span>
+            <select
+              value={selectedTone}
+              onChange={(e) => setSelectedTone(e.target.value)}
+              className="bg-[#050505] border border-[#222] text-[#AAA] hover:text-white text-[10px] font-mono font-extrabold px-3 py-2 outline-none transition-colors cursor-pointer uppercase tracking-wider rounded-none"
+            >
+              <option value="Informative/Documentary">📘 Informative / Documentary</option>
+              <option value="Aggressive/Viral">🔥 Aggressive / Viral</option>
+              <option value="Casual/Vlog">🎙️ Casual / Vlog</option>
+            </select>
+          </div>
+
+          <button
+            onClick={() => onRegenerate(selectedTone)}
+            className="flex items-center gap-2 bg-[#1A1A1A] border border-[#222] hover:border-[#F27D26]/70 hover:text-white text-[#999] hover:bg-[#222] font-extrabold text-[10px] uppercase tracking-widest py-2.5 px-4 rounded-none cursor-pointer transition-all"
+            title="Re-run generation with the selected tone"
+          >
+            <RefreshCw className="w-3.5 h-3.5 shrink-0 animate-pulse text-[#F27D26]" />
+            <span>Regen Script with Tone</span>
+          </button>
+        </div>
       </div>
     </div>
   );

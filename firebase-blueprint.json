@@ -1,0 +1,71 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "A saved video production script project session",
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "description": "Unique identifier for the project"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Reference UID to owner"
+        },
+        "topic": {
+          "type": "string",
+          "description": "Creative concept topic of the production"
+        },
+        "phase": {
+          "type": "string",
+          "description": "Active workflow phase (idle, researching, planned, scripting, completed)"
+        },
+        "research": {
+          "type": "object",
+          "description": "Associated Google Search researched trend statistics and hooks"
+        },
+        "selectedHookIndex": {
+          "type": "integer",
+          "description": "Index of active chosen hooks"
+        },
+        "plan": {
+          "type": "object",
+          "description": "Storyboard modular blueprint parts"
+        },
+        "script": {
+          "type": "string",
+          "description": "Target compiled full script text"
+        },
+        "logs": {
+          "type": "array",
+          "description": "Console message lines associated with project creation history"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when project was initialized"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when project state was last modified"
+        }
+      },
+      "required": [
+        "projectId",
+        "ownerId",
+        "topic",
+        "phase",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Collection of user-created creative studio video productions"
+    }
+  }
+}

@@ -1,74 +1,106 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, signOut as firebaseSignOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
+
+// CRITICAL: The app will break without referencing firestoreDatabaseId if configured
+export const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
 export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
 
-const provider = new GoogleAuthProvider();
-// Request full Google Drive access as requested by the user and confirmed in the OAuth setup
-provider.addScope('https://www.googleapis.com/auth/drive');
-provider.setCustomParameters({
-  prompt: 'consent'
-});
+// Request Drive access scope
+googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
 
-let isSigningIn = false;
-let cachedAccessToken: string | null = null;
+let storedAccessToken: string | null = localStorage.getItem('google_access_token');
 
-// Initialize auth state listener. Call this on app load.
-export const initAuth = (
-  onAuthSuccess?: (user: User, token: string) => void,
-  onAuthFailure?: () => void
-) => {
-  // Let's try to restore a transiently cached token from session memory to preserve active sessions across simple refreshes securely
-  const storedToken = sessionStorage.getItem('drive_access_token');
-  if (storedToken) {
-    cachedAccessToken = storedToken;
+export const googleSignIn = async () => {
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    const accessToken = credential?.accessToken || null;
+    if (accessToken) {
+      storedAccessToken = accessToken;
+      localStorage.setItem('google_access_token', accessToken);
+    }
+    return {
+      user: result.user,
+      accessToken: accessToken
+    };
+  } catch (error) {
+    console.error("Google sign in error", error);
+    throw error;
   }
+};
 
-  return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user && cachedAccessToken) {
-      if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
+export const logout = async () => {
+  await signOut(auth);
+  storedAccessToken = null;
+  localStorage.removeItem('google_access_token');
+};
+
+export const initAuth = (
+  onUserChange: (user: User, accessToken: string) => any,
+  onClear: () => any
+) => {
+  return onAuthStateChanged(auth, (user) => {
+    if (user && storedAccessToken) {
+      onUserChange(user, storedAccessToken);
     } else {
-      // If we have a user but no access token cached in this page session (e.g. initial load),
-      // we can ask the user to sign-in or we can wait for manual trigger.
-      cachedAccessToken = null;
-      sessionStorage.removeItem('drive_access_token');
-      if (onAuthFailure) onAuthFailure();
+      onClear();
     }
   });
 };
 
-// Must be called from a button click or user interaction
-export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
-  try {
-    isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error('Failed to retrieve Google Access Token from Firebase Auth credentials');
-    }
+export const getAccessToken = () => {
+  return storedAccessToken;
+};
 
-    cachedAccessToken = credential.accessToken;
-    sessionStorage.setItem('drive_access_token', cachedAccessToken);
-    return { user: result.user, accessToken: cachedAccessToken };
-  } catch (error: any) {
-    console.error('Google Sign-In Error:', error);
-    throw error;
-  } finally {
-    isSigningIn = false;
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
   }
-};
+}
 
-export const getAccessToken = (): string | null => {
-  if (!cachedAccessToken) {
-    cachedAccessToken = sessionStorage.getItem('drive_access_token');
-  }
-  return cachedAccessToken;
-};
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
-export const logout = async () => {
-  await firebaseSignOut(auth);
-  cachedAccessToken = null;
-  sessionStorage.removeItem('drive_access_token');
-};

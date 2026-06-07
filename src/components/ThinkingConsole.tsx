@@ -5,9 +5,11 @@ import { Terminal, Copy, Shield, Sparkles } from 'lucide-react';
 interface ThinkingConsoleProps {
   logs: LogLine[];
   onClear: () => void;
+  isOpen?: boolean;
+  onToggleOpen?: () => void;
 }
 
-export default function ThinkingConsole({ logs, onClear }: ThinkingConsoleProps) {
+export default function ThinkingConsole({ logs, onClear, isOpen = true, onToggleOpen }: ThinkingConsoleProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -22,7 +24,7 @@ export default function ThinkingConsole({ logs, onClear }: ThinkingConsoleProps)
   };
 
   return (
-    <div className="bg-[#0A0A0A] border border-[#222] rounded-none overflow-hidden flex flex-col h-56 font-mono shadow-sm">
+    <div className="bg-[#0A0A0A] border border-[#222] rounded-none overflow-hidden flex flex-col h-full font-mono shadow-sm">
       {/* Console Header */}
       <div className="bg-[#0F0F0F] px-4 py-2.5 flex items-center justify-between border-b border-[#222] text-[10px] tracking-widest uppercase">
         <div className="flex items-center gap-2 text-[#888]">
@@ -44,6 +46,18 @@ export default function ThinkingConsole({ logs, onClear }: ThinkingConsoleProps)
           >
             Clear
           </button>
+          {onToggleOpen && (
+            <>
+              <span className="text-[#333]">|</span>
+              <button 
+                onClick={onToggleOpen}
+                className="text-[#F27D26] hover:text-white transition-colors uppercase font-black tracking-widest cursor-pointer select-none"
+                title={isOpen ? "Collapse console" : "Expand console"}
+              >
+                {isOpen ? '[ COLLAPSE − ]' : '[ EXPAND + ]'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
