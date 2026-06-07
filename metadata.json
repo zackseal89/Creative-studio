@@ -1,0 +1,6 @@
+{
+  "name": "Creative Studio Agentic App",
+  "description": "An agentic content workspace that researches topics and drafts high-retention video scripts via the Gemini API using search grounding.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
