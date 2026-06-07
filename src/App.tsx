@@ -15,7 +15,8 @@ import ThinkingConsole from './components/ThinkingConsole';
 import ResearchSidebar from './components/ResearchSidebar';
 import PlanningWorkspace from './components/PlanningWorkspace';
 import ScriptWorkspace from './components/ScriptWorkspace';
-import { Play, Sparkles, BookOpen, FileText, CheckCircle, Flame, Server } from 'lucide-react';
+import GoogleDriveExplorer from './components/GoogleDriveExplorer';
+import { Play, Sparkles, BookOpen, FileText, CheckCircle, Flame, Server, Cloud } from 'lucide-react';
 
 export default function App() {
   // Topic input text state
@@ -28,6 +29,7 @@ export default function App() {
   const [plan, setPlan] = useState<ContentPlan | null>(null);
   const [script, setScript] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogLine[]>([]);
+  const [isDriveOpen, setIsDriveOpen] = useState<boolean>(false);
 
   // Spinners
   const [isResearchLoading, setIsResearchLoading] = useState<boolean>(false);
@@ -298,6 +300,17 @@ export default function App() {
         </div>
 
         <div className="flex items-center space-x-4">
+          <button 
+            type="button"
+            onClick={() => setIsDriveOpen(!isDriveOpen)}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-none border text-[10px] uppercase tracking-widest font-extrabold cursor-pointer transition-all ${
+              isDriveOpen ? 'bg-[#F27D26] border-[#F27D26] text-black' : 'border-[#222] text-[#888] hover:text-white hover:border-[#333]'
+            }`}
+          >
+            <Cloud className={`w-3.5 h-3.5 ${isDriveOpen ? 'text-black' : 'text-[#F27D26]'}`} />
+            <span>Drive Library</span>
+          </button>
+
           <span className="text-[9px] bg-[#1A1A1A] px-2.5 py-1 rounded-none text-[#888] border border-[#222] uppercase tracking-widest font-mono select-none">
             GEMINI 3.5 FLASH DEPLOYED
           </span>
@@ -346,59 +359,78 @@ export default function App() {
 
       {/* Main Container Layout */}
       <main className="flex-1 flex overflow-hidden">
-        {phase === 'idle' ? (
-          <div className="flex-1 bg-[#0A0A0A] flex flex-col justify-center items-center p-8 text-center select-none">
-            <div className="max-w-md space-y-6">
-              <div className="inline-block p-4 bg-[#141414] border border-[#222]">
-                <Sparkles className="w-8 h-8 text-[#F27D26]" />
-              </div>
-              <div className="space-y-2">
-                <h2 className="text-xl font-serif text-white tracking-wide italic">"Every great project begins with deep grounding structure"</h2>
-                <p className="text-xs text-[#666] leading-relaxed max-w-sm mx-auto uppercase tracking-wide">
-                  Formulate YouTube scripts rooted in real-time verified facts. Submit your video topic above to initiate the intelligence workflow.
-                </p>
+        <div className="flex-1 flex overflow-hidden relative">
+          {phase === 'idle' ? (
+            <div className="flex-1 bg-[#0A0A0A] flex flex-col justify-center items-center p-8 text-center select-none">
+              <div className="max-w-md space-y-6">
+                <div className="inline-block p-4 bg-[#141414] border border-[#222]">
+                  <Sparkles className="w-8 h-8 text-[#F27D26]" />
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-xl font-serif text-white tracking-wide italic">"Every great project begins with deep grounding structure"</h2>
+                  <p className="text-xs text-[#666] leading-relaxed max-w-sm mx-auto uppercase tracking-wide">
+                    Formulate YouTube scripts rooted in real-time verified facts. Submit your video topic above to initiate the intelligence workflow.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex-grow flex overflow-hidden">
-            {/* Split layout: 1. Research Sidebar left (approx 400px width) */}
-            <div className="w-[380px] shrink-0 border-r border-[#222] bg-[#0F0F0F] overflow-hidden">
-              <ResearchSidebar 
-                research={research}
-                isLoading={isResearchLoading}
-                selectedHookIndex={selectedHookIndex}
-                onSelectHook={(idx) => {
-                  setSelectedHookIndex(idx);
-                  addLog(`Narrative anchor updated to Hook H0${idx + 1}.`, 'info');
-                }}
-              />
-            </div>
-
-            {/* Split layout: 2. Core approved script blocks / planner workspaces on the right (flexible) */}
-            <div className="flex-1 bg-[#0A0A0A] flex flex-col overflow-hidden">
-              {script ? (
-                <ScriptWorkspace
-                  script={script}
-                  onUpdateScript={handleUpdateScript}
-                  onRegenerate={() => {
-                    addLog("Regenerating Cinematic YouTube Script text with Gemini API...", "thinking");
-                    handleCompileScript();
+          ) : (
+            <div className="flex-grow flex overflow-hidden">
+              {/* Split layout: 1. Research Sidebar left (approx 400px width) */}
+              <div className="w-[380px] shrink-0 border-r border-[#222] bg-[#0F0F0F] overflow-hidden">
+                <ResearchSidebar 
+                  research={research}
+                  isLoading={isResearchLoading}
+                  selectedHookIndex={selectedHookIndex}
+                  onSelectHook={(idx) => {
+                    setSelectedHookIndex(idx);
+                    addLog(`Narrative anchor updated to Hook H0${idx + 1}.`, 'info');
                   }}
-                  onReset={handleResetWorkspace}
-                  isScriptingLoading={isScriptingLoading}
                 />
-              ) : (
-                <PlanningWorkspace
-                  plan={plan}
-                  onUpdatePlan={handleUpdatePlan}
-                  onApprove={handleCompileScript}
-                  onRegenerate={handleRegenPlan}
-                  isPlanningLoading={isPlanningLoading}
-                  isScriptingLoading={isScriptingLoading}
-                />
-              )}
+              </div>
+
+              {/* Split layout: 2. Core approved script blocks / planner workspaces on the right (flexible) */}
+              <div className="flex-1 bg-[#0A0A0A] flex flex-col overflow-hidden">
+                {script ? (
+                  <ScriptWorkspace
+                    script={script}
+                    onUpdateScript={handleUpdateScript}
+                    onRegenerate={() => {
+                      addLog("Regenerating Cinematic YouTube Script text with Gemini API...", "thinking");
+                      handleCompileScript();
+                    }}
+                    onReset={handleResetWorkspace}
+                    isScriptingLoading={isScriptingLoading}
+                  />
+                ) : (
+                  <PlanningWorkspace
+                    plan={plan}
+                    onUpdatePlan={handleUpdatePlan}
+                    onApprove={handleCompileScript}
+                    onRegenerate={handleRegenPlan}
+                    isPlanningLoading={isPlanningLoading}
+                    isScriptingLoading={isScriptingLoading}
+                  />
+                )}
+              </div>
             </div>
+          )}
+        </div>
+
+        {isDriveOpen && (
+          <div className="w-[340px] shrink-0 border-l border-[#222] bg-[#0F0F0F] h-full overflow-hidden relative">
+            <GoogleDriveExplorer 
+              currentScript={script}
+              currentTopic={topic}
+              onLoadScript={(derivedTopic, scriptText) => {
+                setTopic(derivedTopic);
+                setScript(scriptText);
+                setPhase('completed');
+                addLog(`Loaded production "${derivedTopic}" directly from Google Drive.`, 'success');
+              }}
+              addLog={addLog}
+              onClose={() => setIsDriveOpen(false)}
+            />
           </div>
         )}
       </main>

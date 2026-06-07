@@ -1,5 +1,21 @@
-import React, { useState } from 'react';
-import { Eye, Code, Download, RefreshCw, FileText, Check, Undo, Save } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Eye, 
+  Code, 
+  Download, 
+  RefreshCw, 
+  Check, 
+  Sparkles, 
+  Copy, 
+  Film, 
+  HelpCircle, 
+  Image as ImageIcon, 
+  ChevronRight, 
+  Layers, 
+  Monitor, 
+  Smartphone, 
+  Tv 
+} from 'lucide-react';
 
 interface ScriptWorkspaceProps {
   script: string | null;
@@ -16,8 +32,37 @@ export default function ScriptWorkspace({
   onReset,
   isScriptingLoading
 }: ScriptWorkspaceProps) {
-  const [viewMode, setViewMode] = useState<'preview' | 'raw'>('preview');
+  const [viewMode, setViewMode] = useState<'preview' | 'raw' | 'prompts'>('preview');
   const [isCopied, setIsCopied] = useState(false);
+  
+  // States for Prompt Hub
+  const [enhancedPrompts, setEnhancedPrompts] = useState<Record<string, string>>({});
+  const [enhancingStatus, setEnhancingStatus] = useState<Record<string, boolean>>({});
+  const [styleModifiers, setStyleModifiers] = useState<Record<string, string>>({});
+  const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
+
+  // Parse visuals dynamically
+  const extractedVisuals = useMemo(() => {
+    if (!script) return [];
+    const lines = script.split('\n');
+    const list: { id: string; originalText: string; index: number }[] = [];
+    let idx = 1;
+    lines.forEach((line) => {
+      const trimmed = line.trim();
+      if (trimmed.includes('[Visual:') || trimmed.includes('(Visual:') || trimmed.startsWith('Visual:')) {
+        const clean = trimmed.replace(/\[Visual:|\]|\(Visual:|\)/gi, '').trim();
+        if (clean && clean.length > 0) {
+          list.push({
+            id: `V0${idx}`,
+            originalText: clean,
+            index: idx,
+          });
+          idx++;
+        }
+      }
+    });
+    return list;
+  }, [script]);
 
   if (isScriptingLoading) {
     return (
@@ -62,6 +107,46 @@ export default function ScriptWorkspace({
     navigator.clipboard.writeText(script);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  // Enhance a single visual instruction via Backend Gemini API
+  const handleEnhancePrompt = async (vId: string, originalText: string) => {
+    const modifier = styleModifiers[vId] || 'cinematic';
+    setEnhancingStatus(prev => ({ ...prev, [vId]: true }));
+    try {
+      const response = await fetch('/api/enhance-prompt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          promptText: modifier !== 'none' 
+            ? `[Style: ${modifier}] ${originalText}` 
+            : originalText 
+        })
+      });
+      const data = await response.json();
+      if (data.enhancedPrompt) {
+        setEnhancedPrompts(prev => ({ ...prev, [vId]: data.enhancedPrompt }));
+      }
+    } catch (err) {
+      console.error("Enhancement failure:", err);
+    } finally {
+      setEnhancingStatus(prev => ({ ...prev, [vId]: false }));
+    }
+  };
+
+  const handleCopyPromptText = (vId: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedPromptId(vId);
+    setTimeout(() => setCopiedPromptId(null), 2500);
+  };
+
+  // Pre-expand all prompts in one batch
+  const handleEnhanceAll = async () => {
+    extractedVisuals.forEach(async (v) => {
+      if (!enhancedPrompts[v.id]) {
+        await handleEnhancePrompt(v.id, v.originalText);
+      }
+    });
   };
 
   // Light markdown parser to display scripts professionally in raw Editorial style
@@ -136,32 +221,49 @@ export default function ScriptWorkspace({
   };
 
   return (
-    <div className="bg-[#0A0A0A] border border-[#222] rounded-none overflow-hidden flex flex-col h-full shadow-sm">
-      {/* Tab Header */}
-      <div className="bg-[#0F0F0F] px-6 py-3 border-b border-[#222] flex items-center justify-between">
+    <div className="bg-[#0A0A0A] border border-[#222] rounded-none overflow-hidden flex flex-col h-full shadow-sm relative">
+      {/* Tab Header with dynamic switches */}
+      <div className="bg-[#0F0F0F] px-6 py-3 border-b border-[#222] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-[#F27D26] text-xs">●</span>
+            <span className="text-[#F27D26] text-xs animate-pulse">●</span>
             <h3 className="font-extrabold text-[11px] text-zinc-100 uppercase tracking-widest">03 . Script Board</h3>
           </div>
           
-          {/* Toggles */}
+          {/* Main Toggles */}
           <div className="bg-[#0A0A0A] p-0.5 rounded-none border border-[#222] flex items-center gap-0.5">
             <button
               onClick={() => setViewMode('preview')}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-extrabold tracking-widest uppercase rounded-none transition-all cursor-pointer ${
                 viewMode === 'preview' 
-                  ? 'bg-[#F27D26] text-black' 
+                  ? 'bg-[#F27D26] text-black font-extrabold' 
                   : 'text-[#666] hover:text-[#AAA]'
               }`}
             >
               <span>Studio View</span>
             </button>
+            
+            <button
+              onClick={() => setViewMode('prompts')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-extrabold tracking-widest uppercase rounded-none transition-all cursor-pointer relative ${
+                viewMode === 'prompts' 
+                  ? 'bg-[#F27D26] text-black font-extrabold' 
+                  : 'text-[#666] hover:text-[#AAA]'
+              }`}
+            >
+              <span>Image Prompts</span>
+              {extractedVisuals.length > 0 && (
+                <span className={`text-[8px] font-mono px-1 rounded-sm ml-1 ${viewMode === 'prompts' ? 'bg-black text-[#F27D26]' : 'bg-[#222] text-[#888]'}`}>
+                  {extractedVisuals.length}
+                </span>
+              )}
+            </button>
+
             <button
               onClick={() => setViewMode('raw')}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-extrabold tracking-widest uppercase rounded-none transition-all cursor-pointer ${
                 viewMode === 'raw' 
-                  ? 'bg-[#F27D26] text-black' 
+                  ? 'bg-[#F27D26] text-black font-extrabold' 
                   : 'text-[#666] hover:text-[#AAA]'
               }`}
             >
@@ -172,13 +274,24 @@ export default function ScriptWorkspace({
 
         {/* Copy / Export controls */}
         <div className="flex items-center gap-2">
+          {viewMode === 'prompts' && extractedVisuals.length > 0 && (
+            <button
+              onClick={handleEnhanceAll}
+              className="flex items-center gap-1.5 border border-[#333] hover:border-[#F27D26] text-[#A0A0A0] hover:text-white font-extrabold text-[10px] uppercase tracking-widest py-1.5 px-3 rounded-none cursor-pointer transition-all"
+              title="Expand all visual placeholders in background"
+            >
+              <Sparkles className="w-3 h-3 text-[#F27D26]" />
+              <span>Enhance All</span>
+            </button>
+          )}
+
           <button
             onClick={handleCopy}
             className={`flex items-center gap-1 px-3 py-1.5 rounded-none border text-[10px] uppercase tracking-widest font-extrabold cursor-pointer transition-all ${
               isCopied ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300' : 'border-[#222] text-[#666] hover:text-white hover:border-[#333]'
             }`}
           >
-            <span>{isCopied ? 'Copied' : 'Copy'}</span>
+            <span>{isCopied ? 'Copied' : 'Copy Script'}</span>
           </button>
 
           <button
@@ -193,7 +306,7 @@ export default function ScriptWorkspace({
       </div>
 
       {/* Main Workspace content */}
-      <div className="flex-1 p-8 overflow-y-auto bg-[#0A0A0A] scrollbar-thin">
+      <div className="flex-1 p-5 md:p-8 overflow-y-auto bg-[#0A0A0A] scrollbar-thin">
         {viewMode === 'raw' ? (
           <textarea
             value={script}
@@ -201,14 +314,199 @@ export default function ScriptWorkspace({
             className="w-full h-full min-h-[400px] bg-[#050505] border border-[#222] rounded-none p-5 text-xs font-mono text-[#AAA] leading-relaxed outline-none focus:border-[#F27D26] transition-colors scrollbar-thin"
             placeholder="Edit script in raw markdown format..."
           />
-        ) : (
+        ) : viewMode === 'preview' ? (
           <div className="max-w-2xl mx-auto space-y-5 select-text font-serif leading-relaxed text-[#CCC]">
             {renderParsedMarkdown(script)}
+          </div>
+        ) : (
+          /* Visual Prompts Manager Hub */
+          <div className="max-w-4xl mx-auto space-y-6">
+            {/* Promo Header banner */}
+            <div className="bg-[#111] border border-[#222] p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Film className="w-4 h-4 text-[#F27D26]" />
+                  <h4 className="font-extrabold text-xs uppercase tracking-widest text-zinc-100">Cinematic Image Prompt Enhancer</h4>
+                </div>
+                <p className="text-[10px] text-[#777] uppercase tracking-wide leading-relaxed">
+                  We scanned your script and isolated <strong className="text-zinc-300 font-bold">{extractedVisuals.length} visual cues</strong>. Use the selectors below to choose an aesthetic modifier and compile elite direct image prompts for Midjourney / DALL-E / Imagen.
+                </p>
+              </div>
+            </div>
+
+            {extractedVisuals.length === 0 ? (
+              <div className="border border-dashed border-[#222] p-12 text-center text-zinc-600 space-y-3">
+                <ImageIcon className="w-8 h-8 text-[#444] mx-auto animate-pulse" />
+                <p className="text-[10px] uppercase font-bold tracking-widest text-[#888]">No standard `[Visual: ...]` tags found in script.</p>
+                <p className="text-[9px] uppercase tracking-wider text-[#555]">
+                  Make sure visual placeholders are framed with square brackets or prefixed with "Visual:" in raw editor so they index properly.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {extractedVisuals.map((visual) => {
+                  const modifier = styleModifiers[visual.id] || 'cinematic';
+                  const enhancedText = enhancedPrompts[visual.id];
+                  const isEnhancing = enhancingStatus[visual.id];
+                  const hasCopied = copiedPromptId === visual.id;
+
+                  return (
+                    <div 
+                      key={visual.id} 
+                      className="bg-[#0E0E0E] border border-[#222] hover:border-[#333] transition-colors p-5 flex flex-col gap-4 relative"
+                    >
+                      {/* Card meta row */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-[#222]/50">
+                        <div className="flex items-center gap-2">
+                          <span className="w-10 h-5 bg-[#1F1F1F] text-zinc-400 font-mono text-[9px] flex items-center justify-center font-bold tracking-widest pointer-events-none uppercase">
+                            {visual.id}
+                          </span>
+                          <span className="text-[9px] font-mono text-zinc-500 uppercase">
+                            SCENE SEGMENT #{visual.index}
+                          </span>
+                        </div>
+
+                        {/* Style Select Mode */}
+                        <div className="flex items-center gap-2">
+                          <label className="text-[9px] font-mono font-extrabold text-[#666] uppercase">MODIFIER:</label>
+                          <select 
+                            value={modifier}
+                            onChange={(e) => setStyleModifiers(prev => ({ ...prev, [visual.id]: e.target.value }))}
+                            className="bg-[#050505] border border-[#222] text-[#999] hover:text-white text-[9px] font-mono font-extrabold px-2 py-1 outline-none transition-colors cursor-pointer uppercase tracking-wider rounded-none"
+                          >
+                            <option value="cinematic">🎬 Photorealistic Film (85mm)</option>
+                            <option value="chiaroscuro">🌗 Dark Chiaroscuro (Volumetric)</option>
+                            <option value="cyber">🪐 Neon Cyberpunk Noir</option>
+                            <option value="vector">📐 Minimal Swiss Vector Art</option>
+                            <option value="macro">🔍 Extreme Macro Detail (Tactile)</option>
+                            <option value="warm-retro">🎞️ Warm Retro Film (35mm Grain)</option>
+                            <option value="none">⚙️ Raw (No Style Filter)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Content side-by-side or stacked split */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Left: Original Instruction from Storyboard */}
+                        <div className="space-y-1 bg-[#050505] p-3 border border-[#1A1A1A]">
+                          <span className="text-[8px] font-mono text-[#F27D26] uppercase font-bold tracking-widest block">Original Script visual</span>
+                          <p className="text-xs text-zinc-400 leading-relaxed font-serif italic select-text select-all">
+                            "{visual.originalText}"
+                          </p>
+                        </div>
+
+                        {/* Right: Enhanced Promption Space */}
+                        <div className="space-y-1.5 relative min-h-[90px] flex flex-col justify-between">
+                          <div className="space-y-1">
+                            <span className="text-[8px] font-mono text-[#55D282] uppercase font-bold tracking-widest flex items-center gap-1">
+                              <Sparkles className="w-2.5 h-2.5 text-[#55D282]" />
+                              <span>Image Generation Prompt (Ready for Copy)</span>
+                            </span>
+                            
+                            {isEnhancing ? (
+                              <div className="py-4 flex flex-col items-center justify-center gap-1">
+                                <RefreshCw className="w-4 h-4 text-[#F27D26] animate-spin" />
+                                <span className="text-[8px] font-mono text-zinc-500 uppercase tracking-widest font-extrabold animate-pulse">Expanding sensory detail...</span>
+                              </div>
+                            ) : enhancedText ? (
+                              <p className="text-xs text-zinc-200 leading-relaxed font-mono select-text select-all bg-[#080B09]/80 border border-emerald-950/40 p-3 rounded-none">
+                                {enhancedText}
+                              </p>
+                            ) : (
+                              <p className="text-[11px] text-zinc-500 leading-relaxed font-mono italic p-3">
+                                Detailed b-roll directions have been set in background settings. Click "Enhance" to expand into an ultra-realistic cinematic render prompt.
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Quick copy controls */}
+                          <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#222]/30">
+                            {enhancedText ? (
+                              <button
+                                onClick={() => handleCopyPromptText(visual.id, enhancedText)}
+                                className={`flex items-center gap-1 px-3 py-1 text-[9px] font-mono uppercase font-bold border cursor-pointer transition-all rounded-none ${
+                                  hasCopied 
+                                    ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300' 
+                                    : 'border-[#222] text-zinc-400 hover:text-white hover:bg-zinc-900'
+                                }`}
+                              >
+                                {hasCopied ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3 text-zinc-500" />}
+                                <span>{hasCopied ? 'COPIED TO CLIPBOARD' : 'COPY COMPOSITE PROMPT'}</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleEnhancePrompt(visual.id, visual.originalText)}
+                                className="flex items-center gap-1.5 px-3 py-1 border border-[#F27D26]/40 hover:border-[#F27D26] text-[#F27D26] hover:text-white bg-[#F27D26]/5 font-mono text-[9px] uppercase font-bold cursor-pointer transition-all rounded-none"
+                              >
+                                <Sparkles className="w-3 h-3 animate-pulse" />
+                                <span>ENHANCE WITH GEMINI</span>
+                              </button>
+                            )}
+
+                            {/* Option to copy raw anyway if not enhanced */}
+                            {!enhancedText && (
+                              <button
+                                onClick={() => handleCopyPromptText(visual.id, visual.originalText)}
+                                className="flex items-center gap-1 px-2.5 py-1 border border-[#222] text-zinc-500 hover:text-zinc-300 font-mono text-[9px] uppercase font-bold cursor-pointer transition-all rounded-none"
+                                title="Copy original raw instruction text"
+                              >
+                                <Copy className="w-3 h-3 text-zinc-600" />
+                                <span>COPY RAW</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Prompting instruction sheet */}
+            <div className="bg-[#0A0A0A] border border-[#222] p-5 space-y-3.5">
+              <div className="flex items-center gap-1.5 border-b border-[#222] pb-2">
+                <HelpCircle className="w-4 h-4 text-zinc-400" />
+                <h5 className="font-extrabold text-[10px] uppercase text-zinc-300 tracking-widest font-sans">Aesthetic Aspect Ratio & Engine Cheat Sheet</h5>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-[9px] text-zinc-500">
+                <div className="space-y-1.5 p-3 bg-[#0E0E0E] border border-[#1C1C1C]">
+                  <div className="flex items-center gap-2 text-zinc-400 font-extrabold pb-1 border-b border-[#222]">
+                    <Tv className="w-3.5 h-3.5 text-[#F27D26]" />
+                    <span>YOUTUBE (16:9)</span>
+                  </div>
+                  <p className="leading-relaxed uppercase">
+                    Add parameter <strong className="text-zinc-300">`--ar 16:9`</strong> at the end of your prompt for standard widescreen b-roll video graphics.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5 p-3 bg-[#0E0E0E] border border-[#1C1C1C]">
+                  <div className="flex items-center gap-2 text-zinc-400 font-extrabold pb-1 border-b border-[#222]">
+                    <Smartphone className="w-3.5 h-3.5 text-[#F27D26]" />
+                    <span>SHORTS & REELS (9:16)</span>
+                  </div>
+                  <p className="leading-relaxed uppercase">
+                    Add parameter <strong className="text-zinc-300">`--ar 9:16`</strong> for vertical smartphone layouts, optimized for scroll-friendly platforms.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5 p-3 bg-[#0E0E0E] border border-[#1C1C1C]">
+                  <div className="flex items-center gap-2 text-zinc-400 font-extrabold pb-1 border-b border-[#222]">
+                    <Layers className="w-3.5 h-3.5 text-[#F27D26]" />
+                    <span>ENGINE VERSIONING</span>
+                  </div>
+                  <p className="leading-relaxed uppercase">
+                    Append <strong className="text-zinc-300">`--v 6.0`</strong> or specify <strong className="text-zinc-300">`raw`</strong> mode to trigger cinematic realism engines natively.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
 
-      {/* Footer workspace triggers */}
+      {/* Reset & Regen footer */}
       <div className="bg-[#0F0F0F] px-6 py-4 border-t border-[#222] flex items-center justify-between">
         <button
           onClick={onReset}
@@ -221,8 +519,8 @@ export default function ScriptWorkspace({
           onClick={onRegenerate}
           className="flex items-center gap-1.5 bg-[#1A1A1A] border border-[#222] hover:border-[#F27D26]/70 hover:text-white text-[#666] font-extrabold text-[10px] uppercase tracking-widest py-2.5 px-4 rounded-none cursor-pointer transition-all"
         >
-          <RefreshCw className="w-3 h-3 shrink-0" />
-          <span>Regen Video Script</span>
+          <RefreshCw className="w-3 h-3 shrink-0 animate-pulse" />
+          <span>Regen Entire Video Script</span>
         </button>
       </div>
     </div>
