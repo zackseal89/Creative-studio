@@ -19,14 +19,25 @@ import GoogleDriveExplorer from './components/GoogleDriveExplorer';
 import AudioOrchestrator from './components/AudioOrchestrator';
 import ImageAnalyst from './components/ImageAnalyst';
 import CloudProductionManager from './components/CloudProductionManager';
-import { Play, Sparkles, BookOpen, FileText, CheckCircle, Flame, Server, Cloud } from 'lucide-react';
+import { Play, Sparkles, BookOpen, FileText, CheckCircle, Flame, Server, Cloud, LogIn, Database, Trash2, ArrowRight, RefreshCw } from 'lucide-react';
+import { auth, db, googleSignIn } from './firebase';
+import { onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { collection, getDocs, query, where, deleteDoc, doc } from 'firebase/firestore';
 
 export default function App() {
   // Topic input text state
   const [topic, setTopic] = useState<string>('');
   
+  // User Session Management
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [homeProjects, setHomeProjects] = useState<any[]>([]);
+  const [isHomeProjectsLoading, setIsHomeProjectsLoading] = useState<boolean>(false);
+  
   // Active dashboard Module
   const [activeModule, setActiveModule] = useState<'studio' | 'audio' | 'vision'>('studio');
+  
+  // Custom interactive steps control
+  const [activeStep, setActiveStep] = useState<number>(1);
   
   // Script Workspace States
   const [phase, setPhase] = useState<WorkflowPhase>('idle');
@@ -44,6 +55,28 @@ export default function App() {
   const [isPlanningLoading, setIsPlanningLoading] = useState<boolean>(false);
   const [isScriptingLoading, setIsScriptingLoading] = useState<boolean>(false);
 
+  // Elegant in-app custom confirm modal state (bypasses sandbox iframe blocked popups)
+  const [customConfirm, setCustomConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
+  const triggerConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setCustomConfirm({
+      isOpen: true,
+      title,
+      message,
+      onConfirm
+    });
+  };
+
   // Load state from localStorage on init
   useEffect(() => {
     try {
@@ -57,10 +90,59 @@ export default function App() {
         if (data.plan) setPlan(data.plan);
         if (data.script) setScript(data.script);
         if (data.logs) setLogs(data.logs);
+
+        if (data.script) {
+          setActiveStep(3);
+        } else if (data.plan) {
+          setActiveStep(2);
+        } else if (data.phase && data.phase !== 'idle') {
+          setActiveStep(2);
+        } else {
+          setActiveStep(1);
+        }
       }
     } catch (e) {
       console.error("Failed to restore applet state", e);
     }
+  }, []);
+
+  // Fetch home projects from Firestore on-demand
+  const fetchHomeProjects = async (uid: string) => {
+    setIsHomeProjectsLoading(true);
+    try {
+      const q = query(
+        collection(db, "projects"),
+        where("ownerId", "==", uid)
+      );
+      const querySnapshot = await getDocs(q);
+      const list: any[] = [];
+      querySnapshot.forEach((docSnap) => {
+        list.push(docSnap.data());
+      });
+      // Sort newest updated first
+      list.sort((a, b) => {
+        const aTime = a.updatedAt?.toMillis ? a.updatedAt.toMillis() : new Date(a.updatedAt).getTime();
+        const bTime = b.updatedAt?.toMillis ? b.updatedAt.toMillis() : new Date(b.updatedAt).getTime();
+        return bTime - aTime;
+      });
+      setHomeProjects(list);
+    } catch (err) {
+      console.error("Failed to load home projects list", err);
+    } finally {
+      setIsHomeProjectsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (usr) => {
+      setCurrentUser(usr);
+      if (usr) {
+        fetchHomeProjects(usr.uid);
+      } else {
+        setHomeProjects([]);
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   // Save state helper
@@ -113,6 +195,7 @@ export default function App() {
     setPlan(null);
     setScript(null);
     setSelectedHookIndex(0); // default to first hook
+    setActiveStep(2);
 
     const initialLogs: LogLine[] = [];
     const pushLog = (msg: string, type: 'info' | 'success' | 'warning' | 'thinking' = 'info') => {
@@ -246,6 +329,7 @@ export default function App() {
       const data = await response.json();
       setScript(data.script);
       setPhase('completed');
+      setActiveStep(3);
       
       const nextLogs = [...logs];
       const pushLog = (msg: string, type: 'info' | 'success' | 'warning' | 'thinking') => {
@@ -279,17 +363,32 @@ export default function App() {
     saveState(phase, research, selectedHookIndex, newPlan, script, logs);
   };
 
-  const handleResetWorkspace = () => {
-    if (confirm("Reset layout workspace? All non-exported script progress will be cleared.")) {
+  const handleCancelAndReset = () => {
+    if (phase === 'idle') {
       setTopic('');
-      setPhase('idle');
-      setResearch(null);
-      setSelectedHookIndex(0);
-      setPlan(null);
-      setScript(null);
-      setLogs([]);
-      localStorage.removeItem('studio_agent_state');
+      return;
     }
+
+    triggerConfirm(
+      "Create New Brief?",
+      "Are you sure you want to cancel the current session and start a fresh project? Make sure you have backed up your progress to Cloud Backups to save it forever.",
+      () => {
+        setTopic('');
+        setPhase('idle');
+        setResearch(null);
+        setSelectedHookIndex(0);
+        setPlan(null);
+        setScript(null);
+        setLogs([]);
+        setActiveStep(1);
+        localStorage.removeItem('studio_agent_state');
+        addLog("Workspace progress completely cleared. Project initialized successfully.", "success");
+      }
+    );
+  };
+
+  const handleResetWorkspace = () => {
+    handleCancelAndReset();
   };
 
   return (
@@ -303,14 +402,73 @@ export default function App() {
           <span className="font-extrabold tracking-tight text-lg uppercase text-white">Studio.Agent</span>
         </div>
 
-        {/* Workflow indicator layout */}
-        <div className="hidden md:flex space-x-12 text-[10px] font-bold tracking-[0.2em] uppercase text-[#555]">
-          <div className={`${phase === 'idle' ? 'text-[#F27D26]' : 'text-zinc-500'}`}>01 . Topic Deployed</div>
-          <div className={`${phase === 'researching' || phase === 'planned' ? 'text-[#F27D26]' : 'text-zinc-500'}`}>02 . Grounded Report</div>
-          <div className={`${phase === 'scripting' || phase === 'completed' ? 'text-[#F27D26]' : 'text-zinc-500'}`}>03 . Retention Studio</div>
+        {/* Workflow indicator interactive layout */}
+        <div className="hidden md:flex items-center space-x-5 bg-[#0a0a0a] border border-[#222]/60 px-4 py-1.5 rounded-none font-mono text-[9px] tracking-widest uppercase">
+          <span className="text-[#555] font-black mr-1 text-[8px]">STEPS NAVIGATION:</span>
+          
+          <button
+            onClick={() => {
+              if (phase !== 'idle') {
+                handleCancelAndReset();
+              }
+            }}
+            className={`transition-colors font-extrabold cursor-pointer pr-3 border-r border-[#222] ${
+              phase === 'idle' ? 'text-[#F27D26]' : 'text-zinc-500 hover:text-white'
+            }`}
+            title="Start fresh project setup"
+          >
+            01. NEW BRIEF {phase === 'idle' && '●'}
+          </button>
+          
+          <button
+            onClick={() => {
+              if (research || plan) {
+                setActiveStep(2);
+                setActiveModule('studio');
+                addLog('Navigated back to Step 2: Grounded Storyboard.', 'info');
+              }
+            }}
+            disabled={!research && !plan}
+            className={`transition-colors font-extrabold cursor-pointer px-3 border-r border-[#222] disabled:opacity-30 disabled:cursor-not-allowed ${
+              (phase !== 'idle' && activeStep === 2) ? 'text-[#F27D26] font-black' : 'text-zinc-500 hover:text-white'
+            }`}
+            title="View or Edit Ground Storyboard blocks"
+          >
+            02. GROUND REPORT {(phase !== 'idle' && activeStep === 2) && '●'}
+          </button>
+          
+          <button
+            onClick={() => {
+              if (script) {
+                setActiveStep(3);
+                setActiveModule('studio');
+                addLog('Navigated to Step 3: Core Screen Board screenplay.', 'info');
+              }
+            }}
+            disabled={!script}
+            className={`transition-colors font-extrabold cursor-pointer pl-3 disabled:opacity-30 disabled:cursor-not-allowed ${
+              (phase !== 'idle' && activeStep === 3) ? 'text-[#F27D26] font-black' : 'text-zinc-500 hover:text-white'
+            }`}
+            title="View high retention YouTube script draft"
+          >
+            03. SCRIPT BOARD {(phase !== 'idle' && activeStep === 3) && '●'}
+          </button>
         </div>
 
         <div className="flex items-center space-x-4">
+          {phase !== 'idle' && (
+            <button 
+              type="button"
+              id="header-create-new-brief-btn"
+              onClick={handleCancelAndReset}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-none border border-[#F27D26]/60 hover:border-[#F27D26] text-white hover:bg-[#F27D26] hover:text-black text-[10px] uppercase tracking-widest font-extrabold cursor-pointer transition-all"
+              title="Cancel current workspace and start a fresh brief"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>＋ Create New Brief</span>
+            </button>
+          )}
+
           <button 
             type="button"
             onClick={() => {
@@ -372,16 +530,42 @@ export default function App() {
           )}
         </form>
 
-        {/* Visual Progress Steps representation */}
-        <div className="flex items-center space-x-6 text-[10px] uppercase font-bold tracking-widest">
-          <div className="flex flex-col items-end">
-            <span className="text-[9px] text-[#F27D26] font-bold uppercase tracking-tight mb-1">STORY ARCH PROGRESS</span>
-            <div className="flex space-x-1 select-none">
-              <div className={`w-8 h-1 transition-all ${phase !== 'idle' ? 'bg-[#F27D26]' : 'bg-[#333]'}`}></div>
-              <div className={`w-8 h-1 transition-all ${phase === 'planned' || phase === 'completed' || phase === 'scripting' ? 'bg-[#F27D26]' : 'bg-[#333]'}`}></div>
-              <div className={`w-8 h-1 transition-all ${phase === 'completed' ? 'bg-[#F27D26]' : 'bg-[#333]'}`}></div>
+        {/* Visual Progress Steps representation or Quick Session Actions */}
+        <div className="flex items-center space-x-6">
+          {phase !== 'idle' ? (
+            <div className="flex items-center space-x-3 select-none">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCloudOpen(true);
+                  setIsDriveOpen(false);
+                }}
+                className="px-3.5 py-2 bg-[#121212] hover:bg-[#1A1A1A] border border-[#222] text-zinc-300 hover:text-[#F27D26] font-bold text-[9px] uppercase tracking-widest flex items-center gap-2 cursor-pointer transition-colors"
+                title="Open Cloud Saved Sessions & Backups"
+              >
+                <Server className="w-3.5 h-3.5 text-[#F27D26]" />
+                <span>Sessions & Backups</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleCancelAndReset}
+                className="px-3.5 py-2 bg-[#1C1212] hover:bg-[#331818] border border-[#ff4d4d]/30 hover:border-[#ff4d4d]/60 text-[#ff7777] font-bold text-[9px] uppercase tracking-widest flex items-center gap-1.5 cursor-pointer transition-colors"
+                title="Cancel current workspace and start a fresh project"
+              >
+                <span>✕ Cancel & Fresh</span>
+              </button>
             </div>
-          </div>
+          ) : (
+            <div className="flex flex-col items-end">
+              <span className="text-[9px] text-[#F27D26] font-bold uppercase tracking-tight mb-1 font-mono">STORY ARCH PROGRESS</span>
+              <div className="flex space-x-1 select-none">
+                <div className="w-8 h-1 bg-[#333]"></div>
+                <div className="w-8 h-1 bg-[#333]"></div>
+                <div className="w-8 h-1 bg-[#333]"></div>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
@@ -389,16 +573,200 @@ export default function App() {
       <main className="flex-1 flex overflow-hidden">
         <div className="flex-1 flex overflow-hidden relative">
           {phase === 'idle' ? (
-            <div className="flex-1 bg-[#0A0A0A] flex flex-col justify-center items-center p-8 text-center select-none">
-              <div className="max-w-md space-y-6">
-                <div className="inline-block p-4 bg-[#141414] border border-[#222]">
-                  <Sparkles className="w-8 h-8 text-[#F27D26]" />
+            <div className="flex-grow flex flex-col md:flex-row bg-[#0A0A0A] overflow-y-auto w-full">
+              {/* Left Side: Create New Brief Panel */}
+              <div className="flex-1 p-8 lg:p-12 border-b md:border-b-0 md:border-r border-[#222]/40 flex flex-col justify-center max-w-2xl mx-auto">
+                <div className="space-y-6">
+                  <div className="inline-flex p-3.5 bg-[#141414] border border-[#222] text-[#F27D26] w-fit">
+                    <Sparkles className="w-6 h-6 animate-pulse" />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <h1 className="text-2xl lg:text-3xl font-serif text-white tracking-tight italic">
+                      "Every great project begins with deep grounding structure"
+                    </h1>
+                    <p className="text-xs text-[#666] leading-relaxed uppercase tracking-wider font-mono">
+                      Formulate YouTube scripts rooted in real-time verified facts. Submit your video topic to initiate the workspace workflow.
+                    </p>
+                  </div>
+
+                  {/* Built-in Topic Input Form on Home Page */}
+                  <form onSubmit={handleDeployResearch} className="space-y-4 pt-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest block font-mono">
+                        Primary Topic Brief Input
+                      </label>
+                      <input 
+                        type="text" 
+                        value={topic}
+                        onChange={(e) => setTopic(e.target.value)}
+                        placeholder="e.g., The Future of Autonomous AI Agents in E-commerce" 
+                        className="w-full bg-[#111] border border-[#222] p-3 text-sm text-white focus:outline-none focus:border-[#F27D26] focus:ring-1 focus:ring-[#F27D26] placeholder-[#444] transition-all font-sans"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      id="home-create-new-brief-btn"
+                      disabled={!topic.trim() || isResearchLoading}
+                      className="w-full py-3.5 bg-[#F27D26] hover:bg-white text-black font-extrabold text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all duration-200 select-none shadow hover:shadow-orange-500/10 cursor-pointer disabled:opacity-50"
+                    >
+                      {isResearchLoading ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4 fill-black" />
+                      )}
+                      <span>＋ Create New Brief</span>
+                    </button>
+                  </form>
                 </div>
-                <div className="space-y-2">
-                  <h2 className="text-xl font-serif text-white tracking-wide italic">"Every great project begins with deep grounding structure"</h2>
-                  <p className="text-xs text-[#666] leading-relaxed max-w-sm mx-auto uppercase tracking-wide">
-                    Formulate YouTube scripts rooted in real-time verified facts. Submit your video topic above to initiate the intelligence workflow.
-                  </p>
+              </div>
+
+              {/* Right Side: Backups / Previous Sessions Panel */}
+              <div className="w-full md:w-[420px] p-8 lg:p-12 bg-[#0C0C0C] flex flex-col justify-start border-t md:border-t-0 md:border-l border-[#222]/40 shrink-0">
+                <div className="space-y-6 h-full flex flex-col">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Database className="w-4 h-4 text-[#F27D26]" />
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Previous Sessions</span>
+                    </div>
+                    {currentUser && homeProjects.length > 0 && (
+                      <button
+                        onClick={() => fetchHomeProjects(currentUser.uid)}
+                        className="text-[9px] text-[#888] hover:text-[#F27D26] transition-colors flex items-center gap-1 uppercase tracking-widest font-mono"
+                      >
+                        <RefreshCw className="w-2.5 h-2.5" />
+                        <span>Refresh</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto space-y-3 max-h-[360px] md:max-h-none pr-1">
+                    {!currentUser ? (
+                      <div className="bg-[#0D0D0D] border border-[#222] p-6 text-center space-y-4">
+                        <div className="w-8 h-8 bg-[#161616] border border-[#333] rounded-none flex items-center justify-center mx-auto">
+                          <Database className="w-4 h-4 text-zinc-500" />
+                        </div>
+                        <div className="space-y-1">
+                          <h4 className="text-[10px] font-bold text-white uppercase tracking-wider">Cloud Storage Offline</h4>
+                          <p className="text-[10px] text-zinc-500 leading-relaxed font-mono">
+                            Connect your Google Account to automatically load your previous production sessions and synchronize your storyboard briefs.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              addLog("Opening secure sign-in popup with Google...", "thinking");
+                              const response = await googleSignIn();
+                              if (response.user) {
+                                addLog(`Authenticated successfully as ${response.user.displayName}`, "success");
+                              }
+                            } catch (err: any) {
+                              addLog("Google Auth popup closed or canceled.", "warning");
+                            }
+                          }}
+                          className="w-full py-2 px-3 bg-[#111] hover:bg-[#F27D26] text-[#F27D26] hover:text-black border border-[#F27D26]/40 hover:border-transparent text-[9px] uppercase tracking-widest font-extrabold flex items-center justify-center gap-2 cursor-pointer transition-all duration-200"
+                        >
+                          <LogIn className="w-3.5 h-3.5" />
+                          <span>Link Google Credentials</span>
+                        </button>
+                      </div>
+                    ) : isHomeProjectsLoading ? (
+                      <div className="py-12 text-center space-y-2">
+                        <RefreshCw className="w-6 h-6 text-[#F27D26] animate-spin mx-auto animate-pulse" />
+                        <p className="text-[9px] font-mono uppercase text-zinc-600 tracking-widest">Inquiring Database index...</p>
+                      </div>
+                    ) : homeProjects.length === 0 ? (
+                      <div className="border border-dashed border-[#222] p-8 text-center text-zinc-500 text-[10px] uppercase tracking-wider font-mono">
+                        No cloud backups found.<br/>
+                        Start your first brief to sync progress instantly.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {homeProjects.map((proj) => (
+                          <div
+                            key={proj.projectId}
+                            onClick={() => {
+                              // Load the project
+                              setTopic(proj.topic || '');
+                              setPhase(proj.phase || 'idle');
+                              setResearch(proj.research || null);
+                              setPlan(proj.plan || null);
+                              setScript(proj.script || null);
+                              setLogs(proj.logs || []);
+                              
+                              if (proj.script) {
+                                setActiveStep(3);
+                              } else if (proj.plan) {
+                                setActiveStep(2);
+                              } else if (proj.phase && proj.phase !== 'idle') {
+                                setActiveStep(2);
+                              } else {
+                                setActiveStep(1);
+                              }
+
+                              localStorage.setItem('studio_agent_state', JSON.stringify({
+                                topic: proj.topic || '',
+                                phase: proj.phase || 'idle',
+                                research: proj.research || null,
+                                plan: proj.plan || null,
+                                script: proj.script || null,
+                                logs: proj.logs || []
+                              }));
+
+                              addLog(`Synchronized with cloud project: "${proj.topic}"`, "success");
+                            }}
+                            className="group bg-[#0E0E0E] hover:bg-[#151515] border border-[#222] hover:border-[#F27D26]/60 p-3 flex items-start justify-between cursor-pointer transition-all duration-200 select-none"
+                          >
+                            <div className="space-y-1.5 min-w-0 pr-3 flex-1">
+                              <h5 className="text-[10px] font-extrabold uppercase tracking-wide text-white group-hover:text-[#F27D26] transition-colors truncate">
+                                {proj.topic}
+                              </h5>
+                              <div className="flex items-center gap-3.5 font-mono text-[8px] text-zinc-500">
+                                <span className="bg-[#141414] px-1.5 py-0.5 border border-[#222] text-zinc-400 capitalize">
+                                  {proj.phase}
+                                </span>
+                                <span>
+                                  {proj.updatedAt?.toMillis
+                                    ? new Date(proj.updatedAt.toMillis()).toLocaleDateString()
+                                    : proj.updatedAt
+                                      ? new Date(proj.updatedAt).toLocaleDateString()
+                                      : 'Recently'}
+                                </span>
+                              </div>
+                            </div>
+                            
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                triggerConfirm(
+                                  "Delete Saved Concept?",
+                                  `Are you sure you want to delete the saved screenplay concept "${proj.topic}" from the cloud archive database?`,
+                                  async () => {
+                                    try {
+                                      await deleteDoc(doc(db, "projects", proj.projectId));
+                                      addLog(`Deleted archived concept file: "${proj.topic}"`, "info");
+                                      if (currentUser?.uid) {
+                                        fetchHomeProjects(currentUser.uid);
+                                      }
+                                    } catch (err: any) {
+                                      addLog(`Deletion failed: ${err.message}`, "warning");
+                                    }
+                                  }
+                                );
+                              }}
+                              className="text-zinc-600 hover:text-red-400 p-1 transition-colors self-center cursor-pointer"
+                              title="Delete Session Backup"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -461,6 +829,18 @@ export default function App() {
                     <AudioOrchestrator addLog={addLog} />
                   ) : activeModule === 'vision' ? (
                     <ImageAnalyst addLog={addLog} />
+                  ) : (activeStep === 2 && plan) ? (
+                    <PlanningWorkspace
+                      plan={plan}
+                      onUpdatePlan={handleUpdatePlan}
+                      onApprove={() => {
+                        setActiveStep(3);
+                        handleCompileScript();
+                      }}
+                      onRegenerate={handleRegenPlan}
+                      isPlanningLoading={isPlanningLoading}
+                      isScriptingLoading={isScriptingLoading}
+                    />
                   ) : script ? (
                     <ScriptWorkspace
                       script={script}
@@ -476,7 +856,10 @@ export default function App() {
                     <PlanningWorkspace
                       plan={plan}
                       onUpdatePlan={handleUpdatePlan}
-                      onApprove={handleCompileScript}
+                      onApprove={() => {
+                        setActiveStep(3);
+                        handleCompileScript();
+                      }}
                       onRegenerate={handleRegenPlan}
                       isPlanningLoading={isPlanningLoading}
                       isScriptingLoading={isScriptingLoading}
@@ -522,6 +905,15 @@ export default function App() {
                 setPlan(state.plan || null);
                 setScript(state.script || null);
                 setLogs(state.logs || []);
+                if (state.script) {
+                  setActiveStep(3);
+                } else if (state.plan) {
+                  setActiveStep(2);
+                } else if (state.phase && state.phase !== 'idle') {
+                  setActiveStep(2);
+                } else {
+                  setActiveStep(1);
+                }
                 // Update localStorage cache
                 localStorage.setItem('studio_agent_state', JSON.stringify(state));
               }}
@@ -533,6 +925,7 @@ export default function App() {
                 setPlan(null);
                 setScript(null);
                 setLogs([]);
+                setActiveStep(1);
                 localStorage.removeItem('studio_agent_state');
               }}
               addLog={addLog}
@@ -551,6 +944,41 @@ export default function App() {
           onToggleOpen={() => setIsConsoleOpen(!isConsoleOpen)} 
         />
       </footer>
+
+      {/* Elegant Custom In-App Confirm modal overlay */}
+      {customConfirm.isOpen && (
+        <div className="fixed inset-0 min-h-screen w-screen z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#0F0F0F] border border-[#222] max-w-md w-full p-6 space-y-6 shadow-2xl relative">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[#F27D26]">
+                <Sparkles className="w-4 h-4 animate-pulse text-[#F27D26]" />
+                <h3 className="font-extrabold text-xs uppercase tracking-[0.2em] text-white">{customConfirm.title || "Confirm Action"}</h3>
+              </div>
+              <p className="text-xs text-zinc-400 font-mono leading-relaxed uppercase tracking-wider">{customConfirm.message}</p>
+            </div>
+            
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setCustomConfirm(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 bg-[#141414] hover:bg-[#1E1E1E] text-zinc-400 border border-[#222] text-[10px] tracking-widest font-extrabold uppercase transition-all duration-200 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  customConfirm.onConfirm();
+                  setCustomConfirm(prev => ({ ...prev, isOpen: false }));
+                }}
+                className="px-4 py-2 bg-[#F27D26] hover:bg-white text-black text-[10px] tracking-widest font-extrabold uppercase transition-all duration-200 cursor-pointer"
+              >
+                Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -86,6 +86,28 @@ export default function CloudProductionManager({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [customProjectTitle, setCustomProjectTitle] = useState("");
 
+  // Local Custom Confirm Modal (replaces window.confirm which is blocked in sandboxed iframes)
+  const [localConfirm, setLocalConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
+  const triggerLocalConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setLocalConfirm({
+      isOpen: true,
+      title,
+      message,
+      onConfirm
+    });
+  };
+
   // Set up Firebase auth listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -280,34 +302,39 @@ export default function CloudProductionManager({
     e.stopPropagation();
     if (!user) return;
 
-    const confirmDelete = window.confirm(
-      `Delete production "${proj.topic}" permanently from the Cloud? This cannot be undone.`
+    triggerLocalConfirm(
+      "Delete Saved Production",
+      `Are you sure you want to delete production "${proj.topic}" permanently from the Cloud? This cannot be undone.`,
+      async () => {
+        setErrorStatus(null);
+        addLog(`Removing project "${proj.topic}"...`, "thinking");
+
+        try {
+          await deleteDoc(doc(db, "projects", proj.projectId));
+          addLog(`Deleted project file "${proj.topic}" from cloud database.`, "success");
+          setSuccessMessage(`Removed successfully.`);
+          await fetchProjectsFromFirestore(user.uid);
+        } catch (err: any) {
+          console.error(err);
+          setErrorStatus(err.message || "Deletion failed.");
+          addLog(`Delete failed: ${err.message}`, "warning");
+        }
+      }
     );
-    if (!confirmDelete) return;
-
-    setErrorStatus(null);
-    addLog(`Removing project "${proj.topic}"...`, "thinking");
-
-    try {
-      await deleteDoc(doc(db, "projects", proj.projectId));
-      addLog(`Deleted project file "${proj.topic}" from cloud database.`, "success");
-      setSuccessMessage(`Removed successfully.`);
-      await fetchProjectsFromFirestore(user.uid);
-    } catch (err: any) {
-      console.error(err);
-      setErrorStatus(err.message || "Deletion failed.");
-      addLog(`Delete failed: ${err.message}`, "warning");
-    }
   };
 
   // Fresh New Project workflow
   const handleStartFreshProject = () => {
-    if (confirm("Jumping into a completely fresh project? Make sure you have backed up your current workspace to the Cloud first! This will clear current screen values.")) {
-      onResetWorkspace();
-      setCustomProjectTitle("");
-      addLog("Workspace initialized! Ready for fresh creative inputs.", "success");
-      setSuccessMessage("Fresh project workspace ready!");
-    }
+    triggerLocalConfirm(
+      "Start Fresh Project workspace?",
+      "Jumping into a completely fresh project? Make sure you have backed up your current workspace to the Cloud first! This will clear current screen values.",
+      () => {
+        onResetWorkspace();
+        setCustomProjectTitle("");
+        addLog("Workspace initialized! Ready for fresh creative inputs.", "success");
+        setSuccessMessage("Fresh project workspace ready!");
+      }
+    );
   };
 
   return (
@@ -523,6 +550,41 @@ export default function CloudProductionManager({
           STORAGE SYSTEM OVERLAY ACTIVE
         </span>
       </div>
+
+      {/* Elegant Local In-App Confirm modal overlay */}
+      {localConfirm.isOpen && (
+        <div className="fixed inset-0 min-h-screen w-screen z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#0F0F0F] border border-[#222] max-w-sm w-full p-5 space-y-5 shadow-2xl relative text-left">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-[#F27D26]">
+                <Cloud className="w-4 h-4 animate-pulse text-[#F27D26]" />
+                <h3 className="font-extrabold text-[11px] uppercase tracking-[0.2em] text-white">{localConfirm.title || "Confirm Action"}</h3>
+              </div>
+              <p className="text-[10px] text-zinc-400 font-mono leading-relaxed uppercase tracking-wider">{localConfirm.message}</p>
+            </div>
+            
+            <div className="flex items-center justify-end space-x-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setLocalConfirm(prev => ({ ...prev, isOpen: false }))}
+                className="px-3.5 py-1.5 bg-[#141414] hover:bg-[#1E1E1E] text-zinc-400 border border-[#222] text-[9px] tracking-widest font-extrabold uppercase transition-all duration-200 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  localConfirm.onConfirm();
+                  setLocalConfirm(prev => ({ ...prev, isOpen: false }));
+                }}
+                className="px-3.5 py-1.5 bg-[#F27D26] hover:bg-white text-black text-[9px] tracking-widest font-extrabold uppercase transition-all duration-200 cursor-pointer"
+              >
+                Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

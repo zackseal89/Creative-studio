@@ -4,6 +4,37 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Google AI Studio App</title>
+    <script>
+      // Gracefully capture and silence benign WebSocket connection and HMR errors
+      // that occur due to running in sandboxed container environments without HMR.
+      window.addEventListener('unhandledrejection', function(event) {
+        var reason = event.reason;
+        var message = (reason && (reason.message || String(reason))) || '';
+        if (
+          message.indexOf('WebSocket') !== -1 || 
+          message.indexOf('websocket') !== -1 || 
+          message.indexOf('ws://') !== -1 || 
+          message.indexOf('wss://') !== -1 || 
+          message.indexOf('closed without opened') !== -1
+        ) {
+          event.preventDefault();
+          console.warn('[Vite System Client] Gracefully bypassed benign sandbox WebSocket redirection.');
+        }
+      });
+      window.addEventListener('error', function(event) {
+        var message = event.message || '';
+        if (
+          message.indexOf('WebSocket') !== -1 || 
+          message.indexOf('websocket') !== -1 || 
+          message.indexOf('ws://') !== -1 || 
+          message.indexOf('wss://') !== -1 || 
+          message.indexOf('closed without opened') !== -1
+        ) {
+          event.preventDefault();
+          console.warn('[Vite System Client] Dampened benign sandbox socket HMR connection error.');
+        }
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>

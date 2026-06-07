@@ -12,7 +12,8 @@ import {
   AlertCircle, 
   Check, 
   Loader2, 
-  FileCheck2 
+  FileCheck2,
+  FileText
 } from 'lucide-react';
 import { 
   googleSignIn, 
@@ -58,6 +59,28 @@ export default function GoogleDriveExplorer({
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Local Custom Confirm Modal (replaces window.confirm which is blocked in sandboxed iframes)
+  const [localConfirm, setLocalConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
+  const triggerLocalConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setLocalConfirm({
+      isOpen: true,
+      title,
+      message,
+      onConfirm
+    });
+  };
 
   // Auto clear alerts
   useEffect(() => {
@@ -170,35 +193,43 @@ export default function GoogleDriveExplorer({
       // Check if duplicate file already exists in our list
       const existingFile = files.find(f => f.name.toLowerCase() === cleanFileName.toLowerCase());
       
-      if (existingFile) {
-        // GUIDELINE: Must ask user confirmation before updating/modifying existing files
-        const confirmUpdate = window.confirm(
-          `A script file named "${existingFile.name}" already exists in your Studio folder. Do you want to update it with your current workspace script?`
-        );
-        if (!confirmUpdate) {
+      const proceedWithUpload = async (isUpdate: boolean) => {
+        setLoadingText(isUpdate ? "Updating file..." : "Uploading file...");
+        try {
+          if (isUpdate && existingFile) {
+            await updateScript(token, existingFile.id, currentScript);
+            addLog(`Updated file "${existingFile.name}" in Google Drive successfully.`, 'success');
+            setSuccessMessage(`Updated "${existingFile.name}" successfully!`);
+          } else {
+            const newFile = await uploadScript(token, cleanFileName, currentScript, targetFolderId);
+            addLog(`Uploaded new script "${newFile.name}" to Google Drive folder.`, 'success');
+            setSuccessMessage(`Saved "${newFile.name}" to Drive!`);
+          }
+          await syncFolderContents(token);
+        } catch (err: any) {
+          console.error(err);
+          setErrorStatus(err.message || "Failed to export script.");
+          addLog(`Google Drive export failed: ${err.message}`, 'warning');
+        } finally {
           setLoadingText(null);
-          return;
         }
+      };
 
-        // Perform patch update
-        await updateScript(token, existingFile.id, currentScript);
-        addLog(`Updated file "${existingFile.name}" in Google Drive successfully.`, 'success');
-        setSuccessMessage(`Updated "${existingFile.name}" successfully!`);
+      if (existingFile) {
+        triggerLocalConfirm(
+          "Overwrite Google Drive File?",
+          `A script file named "${existingFile.name}" already exists in your Studio folder. Do you want to update it with your current workspace script?`,
+          () => {
+            proceedWithUpload(true);
+          }
+        );
       } else {
-        // Upload new file
-        const newFile = await uploadScript(token, cleanFileName, currentScript, targetFolderId);
-        addLog(`Uploaded new script "${newFile.name}" to Google Drive folder.`, 'success');
-        setSuccessMessage(`Saved "${newFile.name}" to Drive!`);
+        await proceedWithUpload(false);
       }
-
-      // Refresh file index
-      await syncFolderContents(token);
     } catch (err: any) {
       console.error(err);
       setErrorStatus(err.message || "Failed to export script.");
       addLog(`Google Drive export failed: ${err.message}`, 'warning');
-    } finally {
-      setLoadingText(null);
     }
   };
 
@@ -232,28 +263,28 @@ export default function GoogleDriveExplorer({
     e.stopPropagation(); // Avoid triggering import on row click
     if (!token) return;
 
-    // GUIDELINE: Always require explicit client-side confirmation for destructive actions
-    const confirmDelete = window.confirm(
-      `Are you sure you want to delete "${file.name}" from your Google Drive? This action cannot be undone.`
+    triggerLocalConfirm(
+      "Confirm File Deletion",
+      `Are you sure you want to delete "${file.name}" from your Google Drive? This action cannot be undone.`,
+      async () => {
+        setLoadingText("Deleting...");
+        setErrorStatus(null);
+
+        try {
+          await deleteScript(token, file.id);
+          addLog(`Deleted file "${file.name}" from Google Drive.`, 'success');
+          setSuccessMessage(`Deleted file successfully.`);
+          // Refresh list
+          await syncFolderContents(token);
+        } catch (err: any) {
+          console.error(err);
+          setErrorStatus(err.message || "Failed to delete file.");
+          addLog(`Google Drive deletion failed: ${err.message}`, 'warning');
+        } finally {
+          setLoadingText(null);
+        }
+      }
     );
-    if (!confirmDelete) return;
-
-    setLoadingText("Deleting...");
-    setErrorStatus(null);
-
-    try {
-      await deleteScript(token, file.id);
-      addLog(`Deleted file "${file.name}" from Google Drive.`, 'success');
-      setSuccessMessage(`Deleted file successfully.`);
-      // Refresh list
-      await syncFolderContents(token);
-    } catch (err: any) {
-      console.error(err);
-      setErrorStatus(err.message || "Failed to delete file.");
-      addLog(`Google Drive deletion failed: ${err.message}`, 'warning');
-    } finally {
-      setLoadingText(null);
-    }
   };
 
   return (
@@ -491,6 +522,41 @@ export default function GoogleDriveExplorer({
         <div className="absolute inset-0 bg-black/80 flex flex-col justify-center items-center gap-3 z-50">
           <Loader2 className="w-6 h-6 text-[#F27D26] animate-spin" />
           <span className="text-[10px] uppercase tracking-widest font-extrabold text-zinc-300 font-mono select-none">{loadingText}</span>
+        </div>
+      )}
+
+      {/* Elegant Local In-App Confirm modal overlay */}
+      {localConfirm.isOpen && (
+        <div className="fixed inset-0 min-h-screen w-screen z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#0F0F0F] border border-[#222] max-w-sm w-full p-5 space-y-5 shadow-2xl relative text-left">
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-[#F27D26]">
+                <FileText className="w-4 h-4 animate-pulse text-[#F27D26]" />
+                <h3 className="font-extrabold text-[11px] uppercase tracking-[0.2em] text-white">{localConfirm.title || "Confirm Action"}</h3>
+              </div>
+              <p className="text-[10px] text-zinc-400 font-mono leading-relaxed uppercase tracking-wider">{localConfirm.message}</p>
+            </div>
+            
+            <div className="flex items-center justify-end space-x-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setLocalConfirm(prev => ({ ...prev, isOpen: false }))}
+                className="px-3.5 py-1.5 bg-[#141414] hover:bg-[#1E1E1E] text-zinc-400 border border-[#222] text-[9px] tracking-widest font-extrabold uppercase transition-all duration-200 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  localConfirm.onConfirm();
+                  setLocalConfirm(prev => ({ ...prev, isOpen: false }));
+                }}
+                className="px-3.5 py-1.5 bg-[#F27D26] hover:bg-white text-black text-[9px] tracking-widest font-extrabold uppercase transition-all duration-200 cursor-pointer"
+              >
+                Proceed
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
