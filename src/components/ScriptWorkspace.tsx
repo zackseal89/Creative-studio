@@ -26,6 +26,15 @@ interface ScriptWorkspaceProps {
   onRegenerate: (tone: string) => void;
   onReset: () => void;
   isScriptingLoading: boolean;
+  addLog?: (msg: string, type?: 'info' | 'success' | 'warning' | 'thinking') => void;
+}
+
+interface RevisionItem {
+  id: string;
+  content: string;
+  timestamp: string;
+  type: string;
+  wordCount: number;
 }
 
 export default function ScriptWorkspace({
@@ -33,11 +42,98 @@ export default function ScriptWorkspace({
   onUpdateScript,
   onRegenerate,
   onReset,
-  isScriptingLoading
+  isScriptingLoading,
+  addLog
 }: ScriptWorkspaceProps) {
-  const [viewMode, setViewMode] = useState<'preview' | 'raw' | 'prompts'>('preview');
+  const [viewMode, setViewMode] = useState<'preview' | 'raw' | 'prompts' | 'revisions'>('preview');
   const [isCopied, setIsCopied] = useState(false);
   const [selectedTone, setSelectedTone] = useState<string>('Informative/Documentary');
+  
+  // Custom Rev History State engine
+  const [revisions, setRevisions] = useState<RevisionItem[]>([]);
+  const [selectedRevId, setSelectedRevId] = useState<string | null>(null);
+  
+  const isInternalTypingChange = useRef(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Auto compile revisions state and track updates dynamically
+  useEffect(() => {
+    if (!script) return;
+    
+    // Check if this script was updated by manual raw typing
+    if (isInternalTypingChange.current) {
+      isInternalTypingChange.current = false;
+      return;
+    }
+
+    // Seed or append parent action updates (e.g., AI compiler completions or tone changes)
+    const lastRev = revisions[revisions.length - 1];
+    if (!lastRev || lastRev.content !== script) {
+      const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const type = revisions.length === 0 ? 'Initial Draft' : isScriptingLoading ? 'AI Compiler' : 'Workspace Sync';
+      
+      setRevisions(prev => {
+        // Prevent immediate duplicates
+        if (prev.some(r => r.content === script)) return prev;
+        return [
+          ...prev,
+          {
+            id: Math.random().toString(36).substring(7),
+            content: script,
+            timestamp,
+            type,
+            wordCount: script.split(/\s+/).filter(Boolean).length
+          }
+        ].slice(-15);
+      });
+    }
+  }, [script]);
+
+  const handleManualEdit = (newText: string) => {
+    onUpdateScript(newText);
+    
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    typingTimeoutRef.current = setTimeout(() => {
+      setRevisions(prev => {
+        const lastRev = prev[prev.length - 1];
+        const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const wordCount = newText.split(/\s+/).filter(Boolean).length;
+
+        // If the last tracked edit was also a "Manual Edit", group them together to maintain clean logs!
+        if (lastRev && lastRev.type === 'Manual Edit') {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            ...lastRev,
+            content: newText,
+            timestamp,
+            wordCount
+          };
+          return updated;
+        } else {
+          return [
+            ...prev,
+            {
+              id: Math.random().toString(36).substring(7),
+              content: newText,
+              timestamp,
+              type: 'Manual Edit',
+              wordCount
+            }
+          ].slice(-15);
+        }
+      });
+    }, 2500); // 2.5s debounced grouping
+  };
+
+  // Clean timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    };
+  }, []);
   
   // TTS State variables
   const [playingDialogueIdx, setPlayingDialogueIdx] = useState<number | null>(null);
@@ -407,6 +503,22 @@ export default function ScriptWorkspace({
             >
               <span>Markdown Source</span>
             </button>
+
+            <button
+              onClick={() => setViewMode('revisions')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-extrabold tracking-widest uppercase rounded-none transition-all cursor-pointer relative ${
+                viewMode === 'revisions' 
+                  ? 'bg-[#F27D26] text-black font-extrabold' 
+                  : 'text-[#666] hover:text-[#AAA]'
+              }`}
+            >
+              <span>Revision History</span>
+              {revisions.length > 0 && (
+                <span className={`text-[8px] font-mono px-1 rounded-sm ml-1 ${viewMode === 'revisions' ? 'bg-black text-[#F27D26]' : 'bg-[#222] text-[#888]'}`}>
+                  {revisions.length}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Unified Voice Selection Mode */}
@@ -465,13 +577,150 @@ export default function ScriptWorkspace({
         {viewMode === 'raw' ? (
           <textarea
             value={script}
-            onChange={(e) => onUpdateScript(e.target.value)}
+            onChange={(e) => {
+              isInternalTypingChange.current = true;
+              handleManualEdit(e.target.value);
+            }}
             className="w-full h-full min-h-[400px] bg-[#050505] border border-[#222] rounded-none p-5 text-xs font-mono text-[#AAA] leading-relaxed outline-none focus:border-[#F27D26] transition-colors scrollbar-thin"
             placeholder="Edit script in raw markdown format..."
           />
         ) : viewMode === 'preview' ? (
           <div className="max-w-2xl mx-auto space-y-5 select-text font-serif leading-relaxed text-[#CCC]">
             {renderParsedMarkdown(script)}
+          </div>
+        ) : viewMode === 'revisions' ? (
+          /* Custom Revision History dashboard */
+          <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-6 h-full min-h-[450px]">
+            {/* List of snapshots (md:col-span-4) */}
+            <div className="md:col-span-4 space-y-3 flex flex-col h-full border-r border-[#222]/50 pr-4 text-left">
+              <div className="flex items-center justify-between pb-2 border-b border-[#222]">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-[#F27D26] font-extrabold flex items-center gap-1.5 select-none">
+                  <Layers className="w-3.5 h-3.5 text-[#F27D26]" />
+                  <span>Revisions Feed ({revisions.length})</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (script) {
+                      const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                      setRevisions(prev => [
+                        ...prev,
+                        {
+                          id: Math.random().toString(36).substring(7),
+                          content: script,
+                          timestamp,
+                          type: 'User Snapshot',
+                          wordCount: script.split(/\s+/).filter(Boolean).length
+                        }
+                      ].slice(-15));
+                      if (addLog) addLog('Manually created a secure workspace revision checkpoint snapshot.', 'success');
+                    }
+                  }}
+                  className="px-2 py-1 bg-[#141414] hover:bg-[#222] border border-[#222] hover:border-[#F27D26] text-[8px] font-mono text-zinc-350 hover:text-white uppercase tracking-widest transition-colors cursor-pointer"
+                  title="Create quick snapshot backup checkpoint"
+                >
+                  + Take Snapshot
+                </button>
+              </div>
+
+              <div className="space-y-2.5 overflow-y-auto flex-1 pr-1 max-h-[400px] scrollbar-thin">
+                {revisions.map((rev, idx) => {
+                  const isSelected = selectedRevId === rev.id || (!selectedRevId && idx === revisions.length - 1);
+                  return (
+                    <div
+                      key={rev.id}
+                      onClick={() => setSelectedRevId(rev.id)}
+                      className={`p-3.5 border transition-all cursor-pointer text-left select-none relative group ${
+                        isSelected 
+                          ? 'bg-[#181109] border-[#F27D26]/60 text-white' 
+                          : 'bg-[#0E0E0E] p-3 border border-[#222] hover:border-zinc-700 text-zinc-400'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[8.5px] font-mono text-zinc-500 uppercase tracking-widest">
+                          Snapshot #{idx + 1}
+                        </span>
+                        <span className={`text-[7px] font-mono uppercase px-1 py-0.5 ${
+                          rev.type === 'AI Compiler' 
+                            ? 'bg-purple-950/40 border border-purple-500/20 text-purple-300' 
+                            : rev.type === 'Manual Edit'
+                            ? 'bg-blue-950/40 border border-blue-500/20 text-blue-300'
+                            : rev.type === 'User Snapshot'
+                            ? 'bg-emerald-950/40 border border-emerald-500/20 text-emerald-300'
+                            : 'bg-zinc-950/40 border border-zinc-500/20 text-zinc-400'
+                        }`}>
+                          {rev.type}
+                        </span>
+                      </div>
+
+                      <p className="text-[10px] font-mono text-zinc-300 uppercase leading-snug">{rev.timestamp}</p>
+                      <p className="text-[9px] font-mono text-zinc-500 mt-1">{rev.wordCount} words</p>
+
+                      {rev.content === script && (
+                        <span className="absolute bottom-2 right-2 text-[7px] font-mono text-[#F27D26] bg-[#F27D26]/10 border border-[#F27D26]/20 px-1 font-black uppercase tracking-wider">
+                          ACTIVE
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Inspect preview pane */}
+            <div className="md:col-span-8 flex flex-col h-full bg-[#050505] border border-[#222] p-5">
+              {(() => {
+                const inspectRev = revisions.find(r => r.id === selectedRevId) || revisions[revisions.length - 1];
+                if (!inspectRev) {
+                  return (
+                    <div className="flex-1 flex flex-col items-center justify-center text-zinc-600 font-mono text-[10px] py-12">
+                      No revisions tracked in this session yet.
+                    </div>
+                  );
+                }
+
+                const isCurrentActive = inspectRev.content === script;
+
+                return (
+                  <div className="flex flex-col h-full flex-grow space-y-4">
+                    <div className="flex items-center justify-between border-b border-[#222] pb-3 text-left">
+                      <div>
+                        <span className="text-[8px] font-mono text-[#F27D26] uppercase tracking-wider block font-bold">REVISION DATA INSPECT</span>
+                        <h4 className="text-[11px] font-mono font-extrabold text-white uppercase tracking-widest mt-0.5">
+                          Previewing Snapshot from {inspectRev.timestamp} ({inspectRev.type})
+                        </h4>
+                      </div>
+
+                      {!isCurrentActive ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onUpdateScript(inspectRev.content);
+                            if (addLog) addLog(`Restored script screenplay content rollback to version snapshot from ${inspectRev.timestamp}.`, 'success');
+                          }}
+                          className="px-3 py-1.5 bg-[#F27D26] hover:bg-white text-black text-[9px] font-mono font-black uppercase tracking-widest transition-colors cursor-pointer"
+                        >
+                          Revert to this Version
+                        </button>
+                      ) : (
+                        <span className="text-[9px] font-mono font-extrabold text-[#55D282] uppercase tracking-wider bg-emerald-950/30 border border-emerald-500/20 px-2.5 py-1 select-none">
+                          ✓ Matches Active script
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex-grow overflow-y-auto h-[290px] bg-[#0A0A0A] border border-[#1A1A1A] p-4 font-mono text-[11px] leading-relaxed text-zinc-400 select-all whitespace-pre-wrap select-text text-left scrollbar-thin">
+                      {inspectRev.content}
+                    </div>
+
+                    <div className="text-[9px] text-zinc-500 uppercase font-mono tracking-wider text-left pt-1 flex items-center justify-between select-none">
+                      <span>Inspect: {inspectRev.wordCount} words / {inspectRev.content.length} characters</span>
+                      <span>Review carefully then select "revert"</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         ) : (
           /* Visual Prompts Manager Hub */

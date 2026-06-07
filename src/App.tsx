@@ -852,6 +852,7 @@ export default function App() {
                       }}
                       onReset={handleResetWorkspace}
                       isScriptingLoading={isScriptingLoading}
+                      addLog={addLog}
                     />
                   ) : (
                     <PlanningWorkspace
