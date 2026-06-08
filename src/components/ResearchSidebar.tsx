@@ -18,7 +18,7 @@ export default function ResearchSidebar({ research, selectedHookIndex, onSelectH
         </div>
         <div className="text-center">
           <p className="text-zinc-300 font-extrabold text-[11px] uppercase tracking-widest">Retrieving Live Signals...</p>
-          <p className="text-[#666] text-[10px] uppercase font-mono mt-1">Mining Google Search & verifying trends</p>
+          <p className="text-zinc-300 text-[10px] uppercase font-mono mt-1 font-semibold">Mining Google Search & verifying trends</p>
         </div>
       </div>
     );
@@ -28,8 +28,8 @@ export default function ResearchSidebar({ research, selectedHookIndex, onSelectH
     return (
       <div className="bg-[#0F0F0F] border border-[#222] rounded-none p-8 h-full flex flex-col justify-center items-center text-center">
         <span className="text-[#333] text-4xl mb-4 font-mono select-none">Ø</span>
-        <p className="text-zinc-400 font-bold text-xs uppercase tracking-widest">No Research Deployed</p>
-        <p className="text-[#666] text-[11px] mt-2 max-w-[260px] leading-relaxed">
+        <p className="text-zinc-200 font-bold text-xs uppercase tracking-widest">No Research Deployed</p>
+        <p className="text-zinc-400 text-[11px] mt-2 max-w-[260px] leading-relaxed">
           Enter your topic context and initiate the research agent to generate search-grounded telemetry.
         </p>
       </div>
@@ -52,7 +52,7 @@ export default function ResearchSidebar({ research, selectedHookIndex, onSelectH
       <div className="flex-1 overflow-y-auto p-5 space-y-6 scrollbar-thin select-text">
         {/* Research summary card */}
         <div className="bg-[#141414] p-4 rounded-none border-l-2 border-[#F27D26]">
-          <p className="text-[#666] text-[10px] font-bold uppercase tracking-widest mb-1">
+          <p className="text-[#F27D26]/90 text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
             Strategic Synthesis
           </p>
           <p className="text-white text-[13px] font-serif italic leading-relaxed">
@@ -86,7 +86,7 @@ export default function ResearchSidebar({ research, selectedHookIndex, onSelectH
             <h4 className="text-[#F27D26] font-bold text-[10px] uppercase tracking-[0.20em]">
               Hook Selection Matrix
             </h4>
-            <p className="text-[10px] text-[#666] mt-1 font-mono uppercase tracking-wide">
+            <p className="text-[10px] text-zinc-300 mt-1 font-mono uppercase tracking-wide font-medium">
               Select key hook to direct target narrative sequence:
             </p>
           </div>
@@ -122,11 +122,11 @@ export default function ResearchSidebar({ research, selectedHookIndex, onSelectH
 
         {/* Sources with Citations */}
         <div>
-          <h4 className="text-[#666] font-bold text-[10px] uppercase tracking-[0.20em] mb-2.5 flex items-center gap-1.5">
+          <h4 className="text-zinc-300 font-bold text-[10px] uppercase tracking-[0.20em] mb-2.5 flex items-center gap-1.5">
             <span>Verified Sources</span>
           </h4>
           {research.sources.length === 0 ? (
-            <p className="text-[#555] text-[10px] uppercase font-mono pl-1">Knowledge synthesis completed via local index.</p>
+            <p className="text-zinc-400 text-[10px] uppercase font-mono pl-1">Knowledge synthesis completed via local index.</p>
           ) : (
             <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
               {research.sources.map((source, index) => (
@@ -137,7 +137,7 @@ export default function ResearchSidebar({ research, selectedHookIndex, onSelectH
                   rel="noopener noreferrer"
                   className="flex items-center justify-between gap-2 p-2.5 rounded-none bg-[#0A0A0A] hover:bg-[#141414] border border-[#222] transition-colors group"
                 >
-                  <span className="text-[11px] font-mono text-[#666] truncate group-hover:text-zinc-200">
+                  <span className="text-[11px] font-mono text-zinc-300 truncate group-hover:text-zinc-200">
                     {source.title}
                   </span>
                   <ExternalLink className="w-3 h-3 text-[#444] group-hover:text-[#F27D26] shrink-0" />

@@ -12,6 +12,8 @@ export const googleProvider = new GoogleAuthProvider();
 
 // Request Drive access scope
 googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
+googleProvider.addScope('https://www.googleapis.com/auth/calendar');
+googleProvider.addScope('https://www.googleapis.com/auth/drive');
 
 let storedAccessToken: string | null = localStorage.getItem('google_access_token');
 

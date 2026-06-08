@@ -619,7 +619,7 @@ export default function ScriptWorkspace({
                       if (addLog) addLog('Manually created a secure workspace revision checkpoint snapshot.', 'success');
                     }
                   }}
-                  className="px-2 py-1 bg-[#141414] hover:bg-[#222] border border-[#222] hover:border-[#F27D26] text-[8px] font-mono text-zinc-350 hover:text-white uppercase tracking-widest transition-colors cursor-pointer"
+                  className="px-2 py-1 bg-[#141414] hover:bg-[#222] border border-[#222] hover:border-[#F27D26] text-[8px] font-mono text-zinc-400 hover:text-white uppercase tracking-widest transition-colors cursor-pointer"
                   title="Create quick snapshot backup checkpoint"
                 >
                   + Take Snapshot

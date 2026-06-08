@@ -27,14 +27,14 @@ export default function ThinkingConsole({ logs, onClear, isOpen = true, onToggle
     <div className="bg-[#0A0A0A] border border-[#222] rounded-none overflow-hidden flex flex-col h-full font-mono shadow-sm">
       {/* Console Header */}
       <div className="bg-[#0F0F0F] px-4 py-2.5 flex items-center justify-between border-b border-[#222] text-[10px] tracking-widest uppercase">
-        <div className="flex items-center gap-2 text-[#888]">
+        <div className="flex items-center gap-2 text-zinc-400">
           <span className="w-1.5 h-1.5 rounded-full bg-[#F27D26] animate-pulse"></span>
           <span className="font-extrabold text-[#F27D26]">live-agent-thinking.log</span>
         </div>
         <div className="flex items-center gap-3">
           <button 
             onClick={copyLogs}
-            className="text-[#666] hover:text-white transition-colors uppercase font-bold tracking-widest cursor-pointer"
+            className="text-zinc-400 hover:text-white transition-colors uppercase font-bold tracking-widest cursor-pointer"
             title="Copy Logs"
           >
             Copy
@@ -42,7 +42,7 @@ export default function ThinkingConsole({ logs, onClear, isOpen = true, onToggle
           <span className="text-[#333]">|</span>
           <button 
             onClick={onClear}
-            className="text-[#666] hover:text-white transition-colors uppercase font-bold tracking-widest cursor-pointer"
+            className="text-zinc-400 hover:text-white transition-colors uppercase font-bold tracking-widest cursor-pointer"
           >
             Clear
           </button>
@@ -67,13 +67,13 @@ export default function ThinkingConsole({ logs, onClear, isOpen = true, onToggle
         className="flex-1 p-4 overflow-y-auto space-y-1.5 text-[11px] leading-relaxed scrollbar-thin select-text text-[#AAA]"
       >
         {logs.length === 0 ? (
-          <div className="text-[#555] italic h-full flex items-center justify-center gap-2">
+          <div className="text-zinc-500 italic h-full flex items-center justify-center gap-2">
             <span className="text-[#F27D26] animate-pulse">●</span>
             <span className="text-[10px] uppercase font-bold tracking-widest">Console idle. Awaiting topic context deployment.</span>
           </div>
         ) : (
           logs.map((log) => {
-            let typeColor = "text-[#666]";
+            let typeColor = "text-zinc-400";
             let typePrefix = "INFO";
 
             if (log.type === "success") {
@@ -89,7 +89,7 @@ export default function ThinkingConsole({ logs, onClear, isOpen = true, onToggle
 
             return (
               <div key={log.id} className="flex items-start gap-2.5 py-1 border-b border-[#111] last:border-0 hover:bg-[#111]/40 px-1 rounded transition-colors">
-                <span className="text-[#444] select-none shrink-0 font-bold">[{log.timestamp}]</span>
+                <span className="text-zinc-500 select-none shrink-0 font-bold">[{log.timestamp}]</span>
                 <span className={`text-[9px] uppercase tracking-widest shrink-0 w-16 select-none ${typeColor}`}>
                   {typePrefix}
                 </span>

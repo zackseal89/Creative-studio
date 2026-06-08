@@ -20,7 +20,9 @@ import AudioOrchestrator from './components/AudioOrchestrator';
 import ImageAnalyst from './components/ImageAnalyst';
 import CloudProductionManager from './components/CloudProductionManager';
 import CreatorAgentChatbot from './components/CreatorAgentChatbot';
-import { Play, Sparkles, BookOpen, FileText, CheckCircle, Flame, Server, Cloud, LogIn, Database, Trash2, ArrowRight, RefreshCw } from 'lucide-react';
+import ProductionCalendar from './components/ProductionCalendar';
+import AgentSoulManager from './components/AgentSoulManager';
+import { Play, Sparkles, BookOpen, FileText, CheckCircle, Flame, Server, Cloud, LogIn, Database, Trash2, ArrowRight, RefreshCw, LayoutGrid, Music, Eye, Calendar, Bot, Home } from 'lucide-react';
 import { auth, db, googleSignIn } from './firebase';
 import { onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { collection, getDocs, query, where, deleteDoc, doc } from 'firebase/firestore';
@@ -35,7 +37,7 @@ export default function App() {
   const [isHomeProjectsLoading, setIsHomeProjectsLoading] = useState<boolean>(false);
   
   // Active dashboard Module
-  const [activeModule, setActiveModule] = useState<'studio' | 'audio' | 'vision'>('studio');
+  const [activeModule, setActiveModule] = useState<'home' | 'studio' | 'audio' | 'vision' | 'calendar' | 'soul'>('home');
   
   // Custom interactive steps control
   const [activeStep, setActiveStep] = useState<number>(1);
@@ -590,8 +592,122 @@ export default function App() {
 
       {/* Main Container Layout */}
       <main className="flex-1 flex overflow-hidden">
+        {/* Left Sidebar Navigation Menu: Strategic slate industrial sidebar */}
+        <div className="w-[200px] shrink-0 bg-[#0C0C0C] border-r border-[#222]/80 flex flex-col justify-between select-none">
+          {/* Page Links */}
+          <div className="py-6 space-y-6 flex-grow flex flex-col justify-start">
+            <div className="text-[9px] uppercase font-mono tracking-widest text-zinc-500 font-bold mb-1 px-4">
+              Navigator Menu
+            </div>
+            
+            <div className="space-y-1">
+              {/* Navigation Button: Home */}
+              <button
+                type="button"
+                onClick={() => setActiveModule('home')}
+                className={`w-full flex items-center gap-3.5 px-4 py-2.5 font-mono text-[9px] uppercase tracking-wider transition-all duration-200 cursor-pointer text-left ${
+                  activeModule === 'home' 
+                    ? 'bg-[#151515] text-white font-bold border-l-2 border-[#F27D26]' 
+                    : 'text-zinc-500 hover:text-white hover:bg-[#0F0F0F]'
+                }`}
+              >
+                <Home className={`w-3.5 h-3.5 ${activeModule === 'home' ? 'text-[#F27D26]' : 'text-zinc-600'}`} />
+                <span>Workspace Home</span>
+              </button>
+
+              {/* Navigation Button: Studio */}
+              <button
+                type="button"
+                onClick={() => setActiveModule('studio')}
+                className={`w-full flex items-center gap-3.5 px-4 py-2.5 font-mono text-[9px] uppercase tracking-wider transition-all duration-200 cursor-pointer text-left ${
+                  activeModule === 'studio' 
+                    ? 'bg-[#151515] text-white font-bold border-l-2 border-[#F27D26]' 
+                    : 'text-zinc-500 hover:text-white hover:bg-[#0F0F0F]'
+                }`}
+              >
+                <FileText className={`w-3.5 h-3.5 ${activeModule === 'studio' ? 'text-[#F27D26]' : 'text-zinc-600'}`} />
+                <span>Narrative Studio</span>
+              </button>
+
+              {/* Navigation Button: Sound */}
+              <button
+                type="button"
+                onClick={() => setActiveModule('audio')}
+                className={`w-full flex items-center gap-3.5 px-4 py-2.5 font-mono text-[9px] uppercase tracking-wider transition-all duration-200 cursor-pointer text-left ${
+                  activeModule === 'audio' 
+                    ? 'bg-[#151515] text-white font-bold border-l-2 border-[#F27D26]' 
+                    : 'text-zinc-500 hover:text-white hover:bg-[#0F0F0F]'
+                }`}
+              >
+                <Music className={`w-3.5 h-3.5 ${activeModule === 'audio' ? 'text-[#F27D26]' : 'text-zinc-600'}`} />
+                <span>Sound Composer</span>
+              </button>
+
+              {/* Navigation Button: Vision */}
+              <button
+                type="button"
+                onClick={() => setActiveModule('vision')}
+                className={`w-full flex items-center gap-3.5 px-4 py-2.5 font-mono text-[9px] uppercase tracking-wider transition-all duration-200 cursor-pointer text-left ${
+                  activeModule === 'vision' 
+                    ? 'bg-[#151515] text-white font-bold border-l-2 border-[#F27D26]' 
+                    : 'text-zinc-500 hover:text-white hover:bg-[#0F0F0F]'
+                }`}
+              >
+                <Eye className={`w-3.5 h-3.5 ${activeModule === 'vision' ? 'text-[#F27D26]' : 'text-zinc-600'}`} />
+                <span>Vision Analyst</span>
+              </button>
+
+              {/* Navigation Button: Calendar */}
+              <button
+                type="button"
+                onClick={() => setActiveModule('calendar')}
+                className={`w-full flex items-center gap-3.5 px-4 py-2.5 font-mono text-[9px] uppercase tracking-wider transition-all duration-200 cursor-pointer text-left ${
+                  activeModule === 'calendar' 
+                    ? 'bg-[#151515] text-white font-bold border-l-2 border-[#F27D26]' 
+                    : 'text-zinc-500 hover:text-white hover:bg-[#0F0F0F]'
+                }`}
+              >
+                <Calendar className={`w-3.5 h-3.5 ${activeModule === 'calendar' ? 'text-[#F27D26]' : 'text-zinc-600'}`} />
+                <span>Scheduler</span>
+              </button>
+
+              {/* Navigation Button: Agent Soul */}
+              <button
+                type="button"
+                onClick={() => setActiveModule('soul')}
+                className={`w-full flex items-center gap-3.5 px-4 py-2.5 font-mono text-[9px] uppercase tracking-wider transition-all duration-200 cursor-pointer text-left ${
+                  activeModule === 'soul' 
+                    ? 'bg-[#151515] text-white font-bold border-l-2 border-[#F27D26]' 
+                    : 'text-zinc-500 hover:text-white hover:bg-[#0F0F0F]'
+                }`}
+              >
+                <Bot className={`w-3.5 h-3.5 ${activeModule === 'soul' ? 'text-[#F27D26]' : 'text-zinc-600'}`} />
+                <span>Agent Soul</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Footer contextual stats indicator */}
+          <div className="p-4 border-t border-[#222]/60 space-y-3.5 text-left bg-[#080808] select-none">
+            <div className="space-y-1">
+              <p className="text-[8px] font-mono text-[#F27D26] uppercase font-bold tracking-widest">Active Draft Context:</p>
+              <p className="text-[9px] font-mono text-zinc-300 truncate tracking-wide" title={topic || 'None initialized'}>
+                {topic ? `"${topic}"` : 'NO TOPIC GATHERED'}
+              </p>
+            </div>
+            <div className="flex items-center justify-between text-[8px] font-mono text-zinc-600 tracking-widest pt-2 border-t border-zinc-900">
+              <span className="uppercase font-extrabold flex items-center gap-1">
+                <span className={`w-1.5 h-1.5 rounded-full ${topic ? 'bg-[#F27D26] animate-pulse' : 'bg-zinc-700'}`}></span>
+                <span>{phase.toUpperCase()}</span>
+              </span>
+              <span>v3.5</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Dynamic Multi-Page Router Pane */}
         <div className="flex-1 flex overflow-hidden relative">
-          {phase === 'idle' ? (
+          {activeModule === 'home' ? (
             <div className="flex-grow flex flex-col md:flex-row bg-[#0A0A0A] overflow-y-auto w-full">
               {/* Left Side: Create New Brief Panel */}
               <div className="flex-1 p-8 lg:p-12 border-b md:border-b-0 md:border-r border-[#222]/40 flex flex-col justify-center max-w-2xl mx-auto">
@@ -736,9 +852,10 @@ export default function App() {
                                 revisions: proj.revisions || []
                               }));
 
-                              addLog(`Synchronized with cloud project: "${proj.topic}"`, "success");
+                              setActiveModule('studio');
+                              addLog(`Synchronized with cloud project: "${proj.topic}" and activated Narrative Studio!`, "success");
                             }}
-                            className="group bg-[#0E0E0E] hover:bg-[#151515] border border-[#222] hover:border-[#F27D26]/60 p-3 flex items-start justify-between cursor-pointer transition-all duration-200 select-none"
+                            className="group bg-[#0E0E0E] hover:bg-[#151515] border border-[#222] hover:border-[#F27D26]/60 p-3 flex items-start justify-between cursor-pointer transition-all duration-200 select-none text-left"
                           >
                             <div className="space-y-1.5 min-w-0 pr-3 flex-1">
                               <h5 className="text-[10px] font-extrabold uppercase tracking-wide text-white group-hover:text-[#F27D26] transition-colors truncate">
@@ -791,107 +908,143 @@ export default function App() {
                 </div>
               </div>
             </div>
-          ) : (
-            <div className="flex-grow flex overflow-hidden">
-              {/* Split layout: 1. Research Sidebar left (approx 400px width) */}
-              <div className="w-[380px] shrink-0 border-r border-[#222] bg-[#0F0F0F] overflow-hidden">
-                <ResearchSidebar 
-                  research={research}
-                  isLoading={isResearchLoading}
-                  selectedHookIndex={selectedHookIndex}
-                  onSelectHook={(idx) => {
-                    setSelectedHookIndex(idx);
-                    addLog(`Narrative anchor updated to Hook H0${idx + 1}.`, 'info');
-                  }}
-                />
-              </div>
+          ) : activeModule === 'studio' ? (
+            <div className="flex-grow flex overflow-hidden w-full h-full">
+              {phase === 'idle' ? (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 bg-[#090909] text-center space-y-6">
+                  <div className="p-4 bg-[#111] border border-[#222] text-[#F27D26] shadow-sm">
+                    <Sparkles className="w-8 h-8 animate-pulse text-[#F27D26]" />
+                  </div>
+                  <div className="max-w-md space-y-2">
+                    <h3 className="text-sm font-extrabold uppercase tracking-[0.2em] text-white">Narrative Studio Workshop</h3>
+                    <p className="text-[10px] text-zinc-500 font-mono uppercase tracking-wider leading-relaxed">
+                      There is no active topic brief loaded in this workspace. Enter a subject below to ground web research and assemble the narrative.
+                    </p>
+                  </div>
+                  <form onSubmit={handleDeployResearch} className="max-w-md w-full flex gap-3">
+                    <input
+                      type="text"
+                      required
+                      value={topic}
+                      onChange={(e) => setTopic(e.target.value)}
+                      placeholder="Type content focus (e.g., Quantum Computing Trends)..."
+                      className="flex-1 bg-[#111] border border-[#222] p-2.5 text-xs text-white focus:outline-none focus:border-[#F27D26] font-mono"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!topic.trim() || isResearchLoading}
+                      className="px-5 py-2.5 bg-[#F27D26] hover:bg-white text-black font-extrabold text-[10px] uppercase tracking-widest transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {isResearchLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : 'Ground Build'}
+                    </button>
+                  </form>
+                </div>
+              ) : (
+                <div className="flex-grow flex overflow-hidden">
+                  {/* Split layout: 1. Research Sidebar left (approx 380px width) */}
+                  <div className="w-[380px] shrink-0 border-r border-[#222] bg-[#0F0F0F] overflow-hidden">
+                    <ResearchSidebar 
+                      research={research}
+                      isLoading={isResearchLoading}
+                      selectedHookIndex={selectedHookIndex}
+                      onSelectHook={(idx) => {
+                        setSelectedHookIndex(idx);
+                        addLog(`Narrative anchor updated to Hook H0${idx + 1}.`, 'info');
+                      }}
+                    />
+                  </div>
 
-              {/* Split layout: 2. Core approved script blocks / planner workspaces on the right (flexible) */}
-              <div className="flex-1 bg-[#0A0A0A] flex flex-col overflow-hidden">
-                
-                {/* Module switcher tab subnav */}
-                <div className="bg-[#0D0D0D] border-b border-[#222] px-6 py-2.5 flex items-center justify-between shrink-0">
-                  <div className="flex gap-2.5">
-                    <button 
-                      onClick={() => setActiveModule('studio')}
-                      className={`px-4 py-1.5 text-[10px] font-extrabold tracking-widest uppercase cursor-pointer rounded-none transition-all ${
-                        activeModule === 'studio' 
-                          ? 'text-[#F27D26] border-b-2 border-[#F27D26] font-black' 
-                          : 'text-zinc-500 hover:text-white'
-                      }`}
-                    >
-                      📝 Narrative Studio
-                    </button>
-                    <button 
-                      onClick={() => setActiveModule('audio')}
-                      className={`px-4 py-1.5 text-[10px] font-extrabold tracking-widest uppercase cursor-pointer rounded-none transition-all ${
-                        activeModule === 'audio' 
-                          ? 'text-[#F27D26] border-b-2 border-[#F27D26] font-black' 
-                          : 'text-zinc-500 hover:text-white'
-                      }`}
-                    >
-                      🔊 Sound & SFX Composer
-                    </button>
-                    <button 
-                      onClick={() => setActiveModule('vision')}
-                      className={`px-4 py-1.5 text-[10px] font-extrabold tracking-widest uppercase cursor-pointer rounded-none transition-all ${
-                        activeModule === 'vision' 
-                          ? 'text-[#F27D26] border-b-2 border-[#F27D26] font-black' 
-                          : 'text-zinc-500 hover:text-white'
-                      }`}
-                    >
-                      👁️ Storyboard Vision Analyst
-                    </button>
+                  {/* Split layout: 2. Core approved script blocks / planner workspaces on the right (flexible) */}
+                  <div className="flex-1 bg-[#0A0A0A] flex flex-col overflow-hidden">
+                    
+                    {/* Module switcher tab subnav */}
+                    <div className="bg-[#0D0D0D] border-b border-[#222] px-6 py-2.5 flex items-center justify-between shrink-0 select-none">
+                      <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-[#F27D26]">WORKFLOW WORKSPACE STAGES:</span>
+                      <div className="flex items-center space-x-3.5 font-mono text-[9px] uppercase tracking-wider">
+                        <button
+                          disabled={!research}
+                          onClick={() => {
+                            setActiveStep(2);
+                            addLog('Navigated to Step 2: Content plan outlines.', 'info');
+                          }}
+                          className={`py-1 px-3 border border-[#222]/50 hover:border-[#F27D26]/40 cursor-pointer disabled:opacity-30 ${activeStep === 2 ? 'text-[#F27D26] bg-[#141414] font-black' : 'text-zinc-500 hover:text-white'}`}
+                        >
+                          02. Content Plan
+                        </button>
+                        <button
+                          disabled={!script}
+                          onClick={() => {
+                            setActiveStep(3);
+                            addLog('Navigated to Step 3: Screenplay editor.', 'info');
+                          }}
+                          className={`py-1 px-3 border border-[#222]/50 hover:border-[#F27D26]/40 cursor-pointer disabled:opacity-30 ${activeStep === 3 ? 'text-[#F27D26] bg-[#141414] font-black' : 'text-zinc-500 hover:text-white'}`}
+                        >
+                          03. Cinematic Script
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex-grow overflow-hidden">
+                      {(activeStep === 2 && plan) ? (
+                        <PlanningWorkspace
+                          plan={plan}
+                          onUpdatePlan={handleUpdatePlan}
+                          onApprove={() => {
+                            setActiveStep(3);
+                            handleCompileScript();
+                          }}
+                          onRegenerate={handleRegenPlan}
+                          isPlanningLoading={isPlanningLoading}
+                          isScriptingLoading={isScriptingLoading}
+                        />
+                      ) : script ? (
+                        <ScriptWorkspace
+                          script={script}
+                          onUpdateScript={handleUpdateScript}
+                          onRegenerate={(tone) => {
+                            addLog(`Regenerating Cinematic YouTube Script with Gemini in "${tone}" style...`, "thinking");
+                            handleCompileScript(tone);
+                          }}
+                          onReset={handleResetWorkspace}
+                          isScriptingLoading={isScriptingLoading}
+                          addLog={addLog}
+                          revisions={revisions}
+                          setRevisions={setRevisions}
+                        />
+                      ) : (
+                        <PlanningWorkspace
+                          plan={plan}
+                          onUpdatePlan={handleUpdatePlan}
+                          onApprove={() => {
+                            setActiveStep(3);
+                            handleCompileScript();
+                          }}
+                          onRegenerate={handleRegenPlan}
+                          isPlanningLoading={isPlanningLoading}
+                          isScriptingLoading={isScriptingLoading}
+                        />
+                      )}
+                    </div>
+
                   </div>
                 </div>
-
-                <div className="flex-grow overflow-hidden">
-                  {activeModule === 'audio' ? (
-                    <AudioOrchestrator addLog={addLog} />
-                  ) : activeModule === 'vision' ? (
-                    <ImageAnalyst addLog={addLog} />
-                  ) : (activeStep === 2 && plan) ? (
-                    <PlanningWorkspace
-                      plan={plan}
-                      onUpdatePlan={handleUpdatePlan}
-                      onApprove={() => {
-                        setActiveStep(3);
-                        handleCompileScript();
-                      }}
-                      onRegenerate={handleRegenPlan}
-                      isPlanningLoading={isPlanningLoading}
-                      isScriptingLoading={isScriptingLoading}
-                    />
-                  ) : script ? (
-                    <ScriptWorkspace
-                      script={script}
-                      onUpdateScript={handleUpdateScript}
-                      onRegenerate={(tone) => {
-                        addLog(`Regenerating Cinematic YouTube Script with Gemini in "${tone}" style...`, "thinking");
-                        handleCompileScript(tone);
-                      }}
-                      onReset={handleResetWorkspace}
-                      isScriptingLoading={isScriptingLoading}
-                      addLog={addLog}
-                      revisions={revisions}
-                      setRevisions={setRevisions}
-                    />
-                  ) : (
-                    <PlanningWorkspace
-                      plan={plan}
-                      onUpdatePlan={handleUpdatePlan}
-                      onApprove={() => {
-                        setActiveStep(3);
-                        handleCompileScript();
-                      }}
-                      onRegenerate={handleRegenPlan}
-                      isPlanningLoading={isPlanningLoading}
-                      isScriptingLoading={isScriptingLoading}
-                    />
-                  )}
-                </div>
-
-              </div>
+              )}
+            </div>
+          ) : activeModule === 'audio' ? (
+            <div className="flex-1 overflow-hidden h-full">
+              <AudioOrchestrator addLog={addLog} />
+            </div>
+          ) : activeModule === 'vision' ? (
+            <div className="flex-1 overflow-hidden h-full">
+              <ImageAnalyst addLog={addLog} />
+            </div>
+          ) : activeModule === 'calendar' ? (
+            <div className="flex-1 overflow-hidden h-full">
+              <ProductionCalendar currentTopic={topic} addLog={addLog} />
+            </div>
+          ) : (
+            <div className="flex-1 overflow-hidden h-full">
+              <AgentSoulManager addLog={addLog} />
             </div>
           )}
         </div>

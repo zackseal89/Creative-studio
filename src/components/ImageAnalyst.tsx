@@ -180,7 +180,7 @@ export default function ImageAnalyst({ addLog }: ImageAnalystProps) {
                 </div>
                 <div>
                   <p className="text-[11px] font-extrabold uppercase tracking-wider text-zinc-300">Drag & drop your reference artwork</p>
-                  <p className="text-[9px] text-[#555] uppercase tracking-wide mt-1.5">or click to browse filesystem</p>
+                  <p className="text-[9px] text-zinc-300 uppercase tracking-wide mt-1.5 font-medium">or click to browse filesystem</p>
                 </div>
                 <div className="bg-[#151515] px-3 py-1 text-[8px] font-mono text-zinc-500 uppercase tracking-widest border border-[#222]">
                   PNG, JPEG / MAX 5MB
@@ -203,7 +203,7 @@ export default function ImageAnalyst({ addLog }: ImageAnalystProps) {
                     referrerPolicy="no-referrer"
                   />
                 </div>
-                <div className="flex items-center justify-between text-[9px] font-mono text-[#555] uppercase">
+                <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400 uppercase">
                   <span>NAME: {imageFile?.name.substring(0, 20)}...</span>
                   <span>SIZE: {((imageFile?.size || 0) / 1024).toFixed(1)} KB</span>
                 </div>
@@ -213,7 +213,7 @@ export default function ImageAnalyst({ addLog }: ImageAnalystProps) {
             {/* Prompt Selector & Tuning Area */}
             {imageBuffer && (
               <div className="space-y-3.5 pt-2">
-                <label className="text-[9px] font-mono font-extrabold text-[#777] uppercase block">
+                <label className="text-[9px] font-mono font-extrabold text-zinc-300 uppercase block">
                   Select Visual Analysis Directive
                 </label>
                 <div className="flex flex-col gap-1.5">
@@ -300,7 +300,7 @@ export default function ImageAnalyst({ addLog }: ImageAnalystProps) {
                 </div>
                 <div className="space-y-1 select-none">
                   <p className="text-[10px] font-mono uppercase tracking-widest text-[#F27D26]">Running Decoupled Multimodal Pass</p>
-                  <p className="text-[9px] text-[#777] uppercase tracking-widest max-w-[280px]">Comparing shapes, ambient lighting paths, and stylistic weights with Youtube high-retention indexes.</p>
+                  <p className="text-[9px] text-zinc-400 uppercase tracking-widest max-w-[280px]">Comparing shapes, ambient lighting paths, and stylistic weights with Youtube high-retention indexes.</p>
                 </div>
               </div>
             ) : reportResult ? (
@@ -311,12 +311,12 @@ export default function ImageAnalyst({ addLog }: ImageAnalystProps) {
               </div>
             ) : (
               <div className="h-full flex flex-col justify-center items-center text-center space-y-4 select-none">
-                <div className="p-3 bg-[#0E0E0E] border border-[#222]/50 text-zinc-500">
-                  <Eye className="w-6 h-6 text-[#444]" />
+                <div className="p-3 bg-[#0E0E0E] border border-[#222]/50 text-zinc-400">
+                  <Eye className="w-6 h-6 text-zinc-500" />
                 </div>
                 <div className="space-y-1">
-                  <p className="text-[10px] font-mono uppercase tracking-widest text-zinc-500">Awaiting Visual reference</p>
-                  <p className="text-[9px] text-[#444] uppercase tracking-wide max-w-[280px] mx-auto">
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-zinc-300">Awaiting Visual reference</p>
+                  <p className="text-[9px] text-zinc-400 uppercase tracking-wide max-w-[280px] mx-auto">
                     Upload a file on the left and trigger analysis to review lighting directions, color patterns, and prompt coordinates.
                   </p>
                 </div>

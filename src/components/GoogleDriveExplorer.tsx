@@ -13,7 +13,11 @@ import {
   Check, 
   Loader2, 
   FileCheck2,
-  FileText
+  FileText,
+  Image,
+  FileJson,
+  Plus,
+  Copy
 } from 'lucide-react';
 import { 
   googleSignIn, 
@@ -28,6 +32,7 @@ import {
   updateScript, 
   deleteScript, 
   downloadScriptContent,
+  uploadRawFile,
   GoogleDriveFile 
 } from '../driveService';
 import { User } from 'firebase/auth';
@@ -55,10 +60,18 @@ export default function GoogleDriveExplorer({
   
   // Google Drive directories state
   const [folderId, setFolderId] = useState<string | null>(null);
+  const [folderName, setFolderName] = useState<string>("🎬 AI for Everyone — Media Kit");
   const [files, setFiles] = useState<GoogleDriveFile[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Viewing file modal state
+  const [viewingFile, setViewingFile] = useState<{
+    file: GoogleDriveFile;
+    content: string | null;
+    isImage: boolean;
+  } | null>(null);
 
   // Local Custom Confirm Modal (replaces window.confirm which is blocked in sandboxed iframes)
   const [localConfirm, setLocalConfirm] = useState<{
@@ -98,11 +111,11 @@ export default function GoogleDriveExplorer({
   }, [errorStatus]);
 
   // Synchronize Google Folder and fetch metadata list
-  const syncFolderContents = useCallback(async (accessToken: string) => {
+  const syncFolderContents = useCallback(async (accessToken: string, customFolderName: string = folderName) => {
     setIsLoadingFiles(true);
     setErrorStatus(null);
     try {
-      const fid = await findOrCreateFolder(accessToken);
+      const fid = await findOrCreateFolder(accessToken, customFolderName);
       setFolderId(fid);
       const fileList = await listStudioScripts(accessToken, fid);
       setFiles(fileList);
@@ -117,7 +130,7 @@ export default function GoogleDriveExplorer({
     } finally {
       setIsLoadingFiles(false);
     }
-  }, []);
+  }, [folderName]);
 
   // Listen to Firebase Auth state on load
   useEffect(() => {
@@ -125,7 +138,7 @@ export default function GoogleDriveExplorer({
       async (firebaseUser, accessToken) => {
         setUser(firebaseUser);
         setToken(accessToken);
-        syncFolderContents(accessToken);
+        syncFolderContents(accessToken, folderName);
       },
       () => {
         setUser(null);
@@ -133,7 +146,7 @@ export default function GoogleDriveExplorer({
       }
     );
     return () => unsubscribe();
-  }, [syncFolderContents]);
+  }, [syncFolderContents, folderName]);
 
   // Handle manual Google login trigger
   const handleConnect = async () => {
@@ -146,7 +159,7 @@ export default function GoogleDriveExplorer({
         setToken(result.accessToken);
         setUser(result.user);
         addLog(`Successfully signed in as ${result.user.displayName}`, "success");
-        await syncFolderContents(result.accessToken);
+        await syncFolderContents(result.accessToken, folderName);
         setSuccessMessage("Google Drive connected successfully!");
       }
     } catch (err: any) {
@@ -173,6 +186,98 @@ export default function GoogleDriveExplorer({
     }
   };
 
+  // Trigger Google Picker overlay
+  const handleOpenPicker = () => {
+    if (!token) {
+      setErrorStatus("Auth credentials needed to launch Google Picker. Please sign in.");
+      return;
+    }
+    
+    addLog("Initializing Google Picker...", "thinking");
+    
+    const onPickerApiLoad = () => {
+      try {
+        const view = new (window as any).google.picker.View((window as any).google.picker.ViewId.DOCS);
+        const picker = new (window as any).google.picker.PickerBuilder()
+          .addView(view)
+          .setOAuthToken(token)
+          .setDeveloperKey("AIzaSyC6112Vb1Nlw_L7ZHyCNkSlIuRHu92XGx0") // Using the valid API key
+          .setOrigin(window.location.origin)
+          .setCallback(pickerCallback)
+          .build();
+        picker.setVisible(true);
+        addLog("Google Picker container opened successfully.", "success");
+      } catch (err: any) {
+        console.error(err);
+        setErrorStatus(`Google Picker initialization error: ${err.message || err}`);
+        addLog(`Picker failed: ${err.message || 'Check Browser constraints.'}`, "warning");
+      }
+    };
+
+    if ((window as any).google && (window as any).google.picker) {
+      onPickerApiLoad();
+    } else {
+      // Dynamically inject the script loader
+      const script = document.createElement('script');
+      script.src = 'https://apis.google.com/js/api.js';
+      script.onload = () => {
+        (window as any).gapi.load('picker', {
+          callback: onPickerApiLoad
+        });
+      };
+      script.onerror = () => {
+        setErrorStatus("Failed to load Google API client scripts from gapi CDN.");
+      };
+      document.body.appendChild(script);
+    }
+  };
+
+  const pickerCallback = async (data: any) => {
+    if (data[(window as any).google.picker.Response.ACTION] === (window as any).google.picker.Action.PICKED) {
+      const doc = data[(window as any).google.picker.Response.DOCUMENTS][0];
+      const pickedId = doc[(window as any).google.picker.Document.ID];
+      const pickedName = doc[(window as any).google.picker.Document.NAME];
+      const mimeType = doc[(window as any).google.picker.Document.MIME_TYPE];
+
+      setIsLoadingFiles(true);
+      addLog(`Picked asset via Google Picker: "${pickedName}"`, 'success');
+      
+      try {
+        const isImg = mimeType?.startsWith('image/') || pickedName.toLowerCase().endsWith('.png') || pickedName.toLowerCase().endsWith('.jpg') || pickedName.toLowerCase().endsWith('.jpeg');
+        
+        let content: string | null = null;
+        if (isImg) {
+          const response = await fetch(`https://www.googleapis.com/drive/v3/files/${pickedId}?alt=media`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const blob = await response.blob();
+          content = URL.createObjectURL(blob);
+        } else {
+          content = await downloadScriptContent(token!, pickedId);
+        }
+
+        setViewingFile({
+          file: {
+            id: pickedId,
+            name: pickedName,
+            mimeType: mimeType || 'application/octet-stream',
+            modifiedTime: new Date().toISOString()
+          },
+          content,
+          isImage: isImg
+        });
+        setSuccessMessage(`Opened Picker asset: "${pickedName}"`);
+        await syncFolderContents(token!);
+      } catch (err: any) {
+        console.error(err);
+        setErrorStatus(`Failed to read content: ${err.message}`);
+        addLog(`Failed to import file contents: ${err.message}`, "warning");
+      } finally {
+        setIsLoadingFiles(false);
+      }
+    }
+  };
+
   // Export current active script to Drive (guarded by overwrite detection)
   const handleExportToDrive = async () => {
     if (!token || !currentScript) return;
@@ -186,7 +291,7 @@ export default function GoogleDriveExplorer({
       
       let targetFolderId = folderId;
       if (!targetFolderId) {
-        targetFolderId = await findOrCreateFolder(token);
+        targetFolderId = await findOrCreateFolder(token, folderName);
         setFolderId(targetFolderId);
       }
 
@@ -205,7 +310,7 @@ export default function GoogleDriveExplorer({
             addLog(`Uploaded new script "${newFile.name}" to Google Drive folder.`, 'success');
             setSuccessMessage(`Saved "${newFile.name}" to Drive!`);
           }
-          await syncFolderContents(token);
+          await syncFolderContents(token, folderName);
         } catch (err: any) {
           console.error(err);
           setErrorStatus(err.message || "Failed to export script.");
@@ -233,26 +338,82 @@ export default function GoogleDriveExplorer({
     }
   };
 
-  // Load / Import previous script template directly from Drive
-  const handleImportFromDrive = async (file: GoogleDriveFile) => {
+  // Upload custom asset/prompt/workflow file directly into Drive folder
+  const handleAssetUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !token || !folderId) return;
+
+    setLoadingText(`Uploading asset "${file.name}"...`);
+    addLog(`Initiating upload of dynamic resource: ${file.name}...`, 'thinking');
+
+    try {
+      const resp = await uploadRawFile(token, file, folderId);
+      addLog(`Resource "${resp.name}" uploaded successfully to media folder!`, 'success');
+      setSuccessMessage(`Uploaded "${file.name}" to bank!`);
+      await syncFolderContents(token, folderName);
+    } catch (err: any) {
+      console.error(err);
+      setErrorStatus(err.message || "Failed to upload asset.");
+      addLog(`Google Drive upload failed: ${err.message}`, 'warning');
+    } finally {
+      setLoadingText(null);
+      e.target.value = '';
+    }
+  };
+
+  // View / Pull file directly from Drive or view inside explorer
+  const handleViewOrImport = async (file: GoogleDriveFile) => {
     if (!token) return;
-    setLoadingText(`Downloading ${file.name}...`);
+    setLoadingText(`Accessing ${file.name}...`);
     setErrorStatus(null);
 
     try {
-      const content = await downloadScriptContent(token, file.id);
-      
-      // Extract topic from file name
-      let derivedTopic = file.name.replace(/_script\.md$/i, '').replace(/_/g, ' ');
-      derivedTopic = derivedTopic.charAt(0).toUpperCase() + derivedTopic.slice(1);
+      const nameLower = file.name.toLowerCase();
+      const isImg = file.mimeType?.startsWith('image/') || nameLower.endsWith('.png') || nameLower.endsWith('.jpg') || nameLower.endsWith('.jpeg');
 
-      onLoadScript(derivedTopic, content);
-      addLog(`Loaded production "${file.name}" directly from Google Drive.`, 'success');
-      setSuccessMessage(`Loaded "${file.name}" into workspace!`);
+      if (isImg) {
+        const response = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const blob = await response.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        setViewingFile({
+          file,
+          content: blobUrl,
+          isImage: true
+        });
+        addLog(`Opened image preview of "${file.name}" from drive bank.`, 'success');
+      } else {
+        const content = await downloadScriptContent(token, file.id);
+        
+        // If it is a script file (ends in _script.md or script.md), we can pull/import it into Workspace directly,
+        // otherwise let user copy prompts/workflows manually inside details viewer.
+        const isScriptFile = nameLower.endsWith('_script.md') || nameLower.endsWith('.md');
+        if (isScriptFile) {
+          triggerLocalConfirm(
+            "Load Script to Editor?",
+            `Do you want to import "${file.name}" directly into your active script template editor?`,
+            () => {
+              let derivedTopic = file.name.replace(/_script\.md$/i, '').replace(/\.md$/i, '').replace(/_/g, ' ');
+              derivedTopic = derivedTopic.charAt(0).toUpperCase() + derivedTopic.slice(1);
+              onLoadScript(derivedTopic, content);
+              addLog(`Imported script "${file.name}" into workspace.`, 'success');
+              setSuccessMessage(`Loaded "${file.name}"!`);
+            }
+          );
+        } else {
+          setViewingFile({
+            file,
+            content,
+            isImage: false
+          });
+          addLog(`Fetched text contents for prompt template: "${file.name}"`, 'success');
+        }
+      }
     } catch (err: any) {
       console.error(err);
       setErrorStatus(err.message || "Failed to fetch file content.");
-      addLog(`Google Drive import failed: ${err.message}`, 'warning');
+      addLog(`Google Drive access failed: ${err.message}`, 'warning');
     } finally {
       setLoadingText(null);
     }
@@ -275,7 +436,7 @@ export default function GoogleDriveExplorer({
           addLog(`Deleted file "${file.name}" from Google Drive.`, 'success');
           setSuccessMessage(`Deleted file successfully.`);
           // Refresh list
-          await syncFolderContents(token);
+          await syncFolderContents(token, folderName);
         } catch (err: any) {
           console.error(err);
           setErrorStatus(err.message || "Failed to delete file.");
@@ -287,13 +448,28 @@ export default function GoogleDriveExplorer({
     );
   };
 
+  // Helper to resolve files icon dynamically
+  const getFileIcon = (file: GoogleDriveFile) => {
+    const nameLower = file.name.toLowerCase();
+    if (file.mimeType?.startsWith('image/') || nameLower.endsWith('.png') || nameLower.endsWith('.jpg') || nameLower.endsWith('.jpeg')) {
+      return <Image className="w-3.5 h-3.5 text-blue-400 shrink-0" />;
+    }
+    if (nameLower.endsWith('.json')) {
+      return <FileJson className="w-3.5 h-3.5 text-yellow-500 shrink-0" />;
+    }
+    if (nameLower.endsWith('.txt') || nameLower.endsWith('.md')) {
+      return <FileText className="w-3.5 h-3.5 text-emerald-400 shrink-0" />;
+    }
+    return <FileCheck2 className="w-3.5 h-3.5 text-[#F27D26] shrink-0" />;
+  };
+
   return (
     <div className="h-full flex flex-col bg-[#0F0F0F] text-[#E0E0E0] select-none font-sans border-l border-[#222]">
       {/* Panel Header */}
       <div className="h-14 px-5 border-b border-[#222] flex items-center justify-between bg-[#121212] flex-none">
         <div className="flex items-center gap-2">
           <Cloud className="w-4 h-4 text-[#F27D26]" />
-          <h4 className="font-extrabold text-[11px] text-zinc-100 uppercase tracking-widest">Google Drive Library</h4>
+          <h4 className="font-extrabold text-[11px] text-zinc-100 uppercase tracking-widest font-mono">Drive Media Bank</h4>
         </div>
         <button 
           onClick={onClose}
@@ -330,7 +506,7 @@ export default function GoogleDriveExplorer({
             <div className="space-y-1.5 px-2">
               <p className="text-[11px] uppercase tracking-widest font-extrabold text-white">Drive Offline</p>
               <p className="text-[10px] text-zinc-500 uppercase tracking-wide leading-relaxed">
-                Connect your personal Google account to synchronize workspace script productions with your safe personal cloud directory.
+                Connect your personal Google account to access your Media Kit resources, save workflow configurations, prompts, and view image banks safely.
               </p>
             </div>
 
@@ -385,7 +561,7 @@ export default function GoogleDriveExplorer({
             </div>
           </div>
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-4">
             {/* Connected Info Header */}
             <div className="bg-[#141414] border border-[#222] p-4 flex flex-col gap-3">
               <div className="flex items-center gap-3">
@@ -399,113 +575,166 @@ export default function GoogleDriveExplorer({
                 
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-extrabold text-white uppercase tracking-wider truncate">{user.displayName}</p>
-                  <p className="text-[9px] text-[#666] font-mono truncate">{user.email}</p>
+                  <p className="text-[9px] text-zinc-500 font-mono truncate">{user.email}</p>
                 </div>
 
                 <button 
                   onClick={handleDisconnect}
-                  className="text-zinc-600 hover:text-red-400 p-1 rounded-none hover:bg-red-950/20 transition-all cursor-pointer"
+                  className="text-zinc-500 hover:text-red-400 p-1 rounded-none hover:bg-red-950/20 transition-all cursor-pointer"
                   title="Disconnect account"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              <div className="border-t border-[#222] pt-2 flex items-center justify-between text-[9px] font-mono text-[#555]">
-                <div className="flex items-center gap-1.5 text-zinc-500">
-                  <Folder className="w-3.5 h-3.5" />
-                  <span>SYNC DIR: <strong className="text-zinc-400 font-bold">Studio Agentic Scripts</strong></span>
+              {/* Editable Sync Folder name */}
+              <div className="border-t border-[#222] pt-2.5 space-y-1.5">
+                <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400">
+                  <span className="flex items-center gap-1">
+                    <Folder className="w-3 h-3 text-[#F27D26]" />
+                    ACTIVE DRIVE FOLDER:
+                  </span>
+                  <button 
+                    onClick={() => {
+                      if (token) syncFolderContents(token, folderName);
+                    }} 
+                    className="hover:text-[#F27D26] transition-colors flex items-center gap-1 text-[8px] uppercase tracking-wider font-extrabold"
+                    title="Reload Drive folder"
+                  >
+                    <RefreshCw className="w-2.5 h-2.5" />
+                    <span>Sync</span>
+                  </button>
                 </div>
-                <button 
-                  onClick={() => syncFolderContents(token!)} 
-                  className="hover:text-[#F27D26] transition-colors flex items-center"
-                  title="Reload Drive Directory"
+                
+                <div className="flex items-center gap-1.5 bg-[#090909] border border-[#222] px-2 py-1">
+                  <input
+                    type="text"
+                    value={folderName}
+                    onChange={(e) => setFolderName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && token) {
+                        syncFolderContents(token, folderName);
+                      }
+                    }}
+                    className="w-full bg-transparent text-[11px] text-white font-mono focus:outline-none placeholder-zinc-700"
+                    placeholder="E.g. 🎬 AI for Everyone — Media Kit"
+                  />
+                </div>
+                <p className="text-[8px] text-zinc-500 font-mono leading-normal uppercase">
+                  Press enter or click Sync to query or create folder.
+                </p>
+              </div>
+            </div>
+
+            {/* Local Upload Tool to Bank */}
+            <div className="border border-dashed border-[#223] bg-[#0A0A0A] p-3 text-center transition-colors hover:border-[#F27D26]/40">
+              <Upload className="w-4 h-4 mx-auto mb-1 text-zinc-500" />
+              <p className="text-[9px] font-extrabold text-zinc-300 uppercase tracking-widest leading-none">Upload or Pick Asset</p>
+              <p className="text-[8px] text-zinc-500 uppercase font-mono mt-1 leading-normal mb-2">Workflows, Prompts or Images (Max 15MB)</p>
+              
+              <div className="flex gap-2 justify-center">
+                <label className="px-3 py-1 bg-[#1A1A1A] hover:bg-[#252525] border border-[#333] hover:border-[#F27D26] text-[8px] text-[#F27D26] hover:text-white font-mono font-extrabold uppercase tracking-widest cursor-pointer transition-colors">
+                  Choose File
+                  <input 
+                    type="file"
+                    onChange={handleAssetUpload}
+                    className="hidden" 
+                    accept="image/*,.json,.txt,.md"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleOpenPicker}
+                  className="px-3 py-1 bg-[#1A1A1A] hover:bg-[#252525] border border-[#333] hover:border-[#F27D26] text-[8px] text-[#F27D26] hover:text-white font-mono font-extrabold uppercase tracking-widest cursor-pointer transition-colors"
                 >
-                  <RefreshCw className="w-3 h-3 text-[#666] hover:text-[#F27D26] cursor-pointer" />
+                  Google Picker
                 </button>
               </div>
             </div>
 
-            {/* Cloud Export Actions */}
+            {/* Cloud Export Current Script */}
             {currentScript && (
               <button
                 onClick={handleExportToDrive}
                 disabled={loadingText !== null}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-[#F27D26] hover:bg-white text-black font-extrabold text-[10px] uppercase tracking-widest rounded-none transition-all duration-300 border border-[#F27D26] hover:border-white cursor-pointer disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#F27D26] hover:bg-white text-black font-extrabold text-[10px] uppercase tracking-widest rounded-none transition-all duration-300 border border-[#F27D26] hover:border-white cursor-pointer disabled:opacity-50"
               >
                 {loadingText === "Exporting production..." ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Synchronizing to Drive...</span>
+                    <span>Saving script to Drive...</span>
                   </>
                 ) : (
                   <>
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Save Current Script to Drive</span>
+                    <Folder className="w-3.5 h-3.5" />
+                    <span>Save script to Drive folder</span>
                   </>
                 )}
               </button>
             )}
 
             {/* Directory Files List */}
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               <div className="flex items-center justify-between border-b border-[#222] pb-1.5 select-none">
-                <span className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-widest">Productions on Drive</span>
-                <span className="text-[9px] font-mono text-[#666]">{files.length} ITEMS</span>
+                <span className="text-[9px] font-extrabold text-zinc-500 uppercase tracking-widest">Folder Banks & Resources</span>
+                <span className="text-[9px] font-mono text-[#F27D26]">{files.length} ITEMS</span>
               </div>
 
               {isLoadingFiles ? (
                 <div className="py-12 flex flex-col items-center justify-center gap-2">
-                  <Loader2 className="w-5 h-5 text-[#666] animate-spin" />
-                  <span className="text-[9px] font-mono text-[#666] uppercase tracking-widest">Reindexing...</span>
+                  <Loader2 className="w-5 h-5 text-zinc-650 animate-spin" />
+                  <span className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest">Querying files...</span>
                 </div>
               ) : files.length === 0 ? (
-                <div className="py-12 text-center border border-dashed border-[#222] p-4 text-zinc-600">
-                  <CloudRain className="w-6 h-6 mx-auto mb-2 opacity-30 text-[#F27D26]" />
-                  <p className="text-[10px] uppercase tracking-widest font-extrabold text-zinc-500">Workspace Empty</p>
-                  <p className="text-[9px] uppercase tracking-wide mt-1 text-zinc-600">No scripts found inside folders yet.</p>
+                <div className="py-10 text-center border border-dashed border-[#222] p-4 text-zinc-655 bg-[#0A0A0A]/40">
+                  <CloudRain className="w-5 h-5 mx-auto mb-1 opacity-20 text-[#F27D26]" />
+                  <p className="text-[10px] uppercase tracking-widest font-extrabold text-zinc-400">Library Empty</p>
+                  <p className="text-[8px] uppercase tracking-wide mt-1 text-zinc-550 max-w-[180px] mx-auto leading-relaxed">
+                    Upload reusable images, workflows or prompts to populate your resource bank.
+                  </p>
                 </div>
               ) : (
-                <div className="space-y-1.5 divide-y divide-[#222]/30 max-h-[350px] overflow-y-auto scrollbar-thin">
+                <div className="space-y-1.5 max-h-[300px] overflow-y-auto scrollbar-thin">
                   {files.map((file) => (
                     <div 
                       key={file.id} 
-                      onClick={() => handleImportFromDrive(file)}
-                      className="group p-2.5 bg-[#0A0A0A] hover:bg-[#121212] border border-[#222] rounded-none flex items-center justify-between cursor-pointer transition-colors"
-                      title="Click directly to load script into Editor Workspace"
+                      onClick={() => handleViewOrImport(file)}
+                      className="group p-2 bg-[#090909] hover:bg-[#141414] border border-[#222] hover:border-[#333] rounded-none flex items-center justify-between cursor-pointer transition-all"
+                      title={file.mimeType?.startsWith('image/') ? "Click to view image" : "Click to view contents / copy reusable prompt"}
                     >
-                      <div className="min-w-0 pr-3 space-y-1">
+                      <div className="min-w-0 pr-3 space-y-0.5">
                         <div className="flex items-center gap-1.5">
-                          <FileCheck2 className="w-3.5 h-3.5 text-[#F27D26] shrink-0" />
-                          <p className="text-[11px] font-bold text-zinc-300 group-hover:text-white transition-colors truncate">
-                            {file.name.replace(/_script\.md$/i, '').replace(/_/g, ' ')}
+                          {getFileIcon(file)}
+                          <p className="text-[10px] font-bold text-zinc-300 group-hover:text-white transition-colors truncate">
+                            {file.name}
                           </p>
                         </div>
-                        <p className="text-[8px] text-[#555] font-mono">
+                        <p className="text-[8px] text-zinc-500 font-mono">
                           MOD: {file.modifiedTime ? new Date(file.modifiedTime).toLocaleDateString() : 'N/A'}
                         </p>
                       </div>
 
                       {/* Action Triggers */}
-                      <div className="flex items-center gap-1.5 shrink-0 opacity-80 group-hover:opacity-100">
+                      <div className="flex items-center gap-1 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity">
                         {file.webViewLink && (
                           <a 
                             href={file.webViewLink} 
                             target="_blank" 
                             rel="noopener noreferrer"
                             onClick={(e) => e.stopPropagation()} // Stop row loader trigger
-                            className="p-1 px-1.5 text-[#666] hover:text-[#F27D26] border border-[#222] bg-[#0F0F0F] hover:bg-black transition-colors"
-                            title="Open/View document in original Google Drive layout"
+                            className="p-1 text-zinc-400 hover:text-white border border-[#222] bg-[#0F0F0F] hover:bg-black transition-colors"
+                            title="Open in Drive"
                           >
-                            <ExternalLink className="w-3.5 h-3.5" />
+                            <ExternalLink className="w-3 h-3" />
                           </a>
                         )}
                         <button 
                           onClick={(e) => handleDeleteFile(file, e)}
-                          className="p-1 px-1.5 text-[#666] hover:text-red-400 border border-[#222] bg-[#0F0F0F] hover:bg-black transition-colors cursor-pointer"
-                          title="Delete script permanently"
+                          className="p-1 text-zinc-450 hover:text-red-400 border border-[#222] bg-[#0F0F0F] hover:bg-black transition-colors cursor-pointer"
+                          title="Delete file permanently"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
                     </div>
@@ -516,6 +745,72 @@ export default function GoogleDriveExplorer({
           </div>
         )}
       </div>
+
+      {/* Resource Detail Dynamic Viewer Modal */}
+      {viewingFile && (
+        <div className="fixed inset-0 min-h-screen w-screen z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
+          <div className="bg-[#0A0A0A] border border-[#222] max-w-lg w-full p-5 space-y-4 shadow-2xl relative text-left">
+            <div className="flex items-center justify-between border-b border-[#222] pb-2">
+              <div className="flex items-center gap-2">
+                {getFileIcon(viewingFile.file)}
+                <h3 className="font-extrabold text-[11px] uppercase tracking-wider text-white truncate max-w-[280px]">
+                  {viewingFile.file.name}
+                </h3>
+              </div>
+              <span className="text-[8px] font-mono text-zinc-500 uppercase tracking-widest bg-[#151515] px-2 py-0.5 border border-[#222]">
+                {viewingFile.file.mimeType}
+              </span>
+            </div>
+
+            {/* Document Content Display */}
+            <div className="max-h-[300px] overflow-y-auto bg-[#050505] p-3 border border-[#1A1A1A] font-mono text-[10px] text-zinc-300 scrollbar-thin select-all whitespace-pre-wrap break-words">
+              {viewingFile.isImage ? (
+                <div className="flex justify-center items-center py-2 bg-zinc-950/40">
+                  <img 
+                    src={viewingFile.content || ""} 
+                    alt={viewingFile.file.name}
+                    className="max-h-[250px] object-contain border border-[#222] my-1"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              ) : (
+                viewingFile.content || "No content inside resource found."
+              )}
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[8px] font-mono text-zinc-500 uppercase font-bold">
+                Size: {viewingFile.file.mimeType?.startsWith('image/') ? 'Image binary' : `${((viewingFile.content?.length || 0) / 1024).toFixed(1)} KB`}
+              </span>
+              <div className="flex items-center gap-2">
+                {!viewingFile.isImage && viewingFile.content && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (viewingFile.content) {
+                        navigator.clipboard.writeText(viewingFile.content);
+                        addLog(`Copied prompt template details from "${viewingFile.file.name}" to clipboard.`, 'success');
+                        setSuccessMessage("Copied to clipboard!");
+                      }
+                    }}
+                    className="px-3.5 py-1.5 bg-[#151515] hover:bg-zinc-800 text-zinc-300 border border-[#222] text-[9px] tracking-widest font-extrabold uppercase transition-all duration-200 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Copy className="w-3 h-3 text-[#F27D26]" />
+                    <span>Copy Contents</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setViewingFile(null)}
+                  className="px-4 py-1.5 bg-[#F27D26] hover:bg-white text-black text-[9px] tracking-widest font-extrabold uppercase transition-all duration-200 cursor-pointer"
+                >
+                  Close Viewer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mask Loader indicator */}
       {loadingText && (
@@ -532,7 +827,7 @@ export default function GoogleDriveExplorer({
             <div className="space-y-1.5">
               <div className="flex items-center gap-2 text-[#F27D26]">
                 <FileText className="w-4 h-4 animate-pulse text-[#F27D26]" />
-                <h3 className="font-extrabold text-[11px] uppercase tracking-[0.2em] text-white">{localConfirm.title || "Confirm Action"}</h3>
+                <h3 className="font-extrabold text-[11px] uppercase tracking-[0.2em] text-white font-mono">{localConfirm.title || "Confirm Action"}</h3>
               </div>
               <p className="text-[10px] text-zinc-400 font-mono leading-relaxed uppercase tracking-wider">{localConfirm.message}</p>
             </div>

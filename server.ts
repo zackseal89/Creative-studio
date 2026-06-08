@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -8,6 +9,19 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
+
+const SOUL_FILE_PATH = path.join(process.cwd(), "src", "soul.md");
+
+function getSoulConfig(): string {
+  try {
+    if (fs.existsSync(SOUL_FILE_PATH)) {
+      return fs.readFileSync(SOUL_FILE_PATH, "utf-8");
+    }
+  } catch (err) {
+    console.error("Failed to read soul.md:", err);
+  }
+  return "";
+}
 
 app.use(express.json());
 
@@ -186,6 +200,29 @@ Narrator: Don't build storefronts for yesterday's shoppers. Build structures for
 Narrator: Because the digital landscape is changing at a velocity most cannot comprehend. Look closely at your computer screen...
 `;
 }
+
+// REST endpoints for soul.md personalization
+app.get("/api/soul", (req, res) => {
+  try {
+    const content = getSoulConfig();
+    res.json({ content });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to retrieve soul config." });
+  }
+});
+
+app.post("/api/soul", (req, res) => {
+  const { content } = req.body;
+  if (content === undefined) {
+    return res.status(400).json({ error: "Content field is required." });
+  }
+  try {
+    fs.writeFileSync(SOUL_FILE_PATH, content, "utf-8");
+    res.json({ status: "success", message: "soul.md configuration written successfully!" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to write soul.md." });
+  }
+});
 
 // 1. Research Phase Endpoint
 app.post("/api/research", async (req, res) => {
@@ -391,11 +428,18 @@ Instructions for high-retention engagement in "${selectedTone}" style:
 3. Make it feel highly authentic, professional, and dense with incredible insights. Avoid fluff.
 `;
 
+    const userSoul = getSoulConfig();
+    const soulInstructions = userSoul ? `
+
+CRITICAL BRAND IDENTITY & COPYWRITING SOUL DIRECTIVES (You MUST rigorously apply, enforce the stylistic ban lists of words, and match the narrative framing specified below):
+${userSoul}
+` : "";
+
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents: scriptPrompt,
       config: {
-        systemInstruction: `You are a world-class YouTube scriptwriter for educational, high-retention channels like Veritasium, Johnny Harris, or MagnatesMedia. Write the script strictly as high-impact Markdown narration, including visual b-roll directions in square brackets in the selected tone style: "${selectedTone}". Crucially, each visual b-roll direction in square brackets MUST be written as an exceptionally detailed, industry-standard cinematic direct image generation prompt for Midjourney/DALL-E/Imagen (e.g., specifying exact camera framing like 'Extreme close-up shot', specialized lens specs like '85mm f/1.4 lens, shallow depth of field', lighting dynamics like 'moody volumetric side lighting with dust drifting through daylight rays', color styling like 'steel-blue and dark charcoal tones with warm amber highlights', and clear style coordinates) so it can be fed directly to image generators.`,
+        systemInstruction: `You are a world-class YouTube scriptwriter for educational, high-retention channels like Veritasium, Johnny Harris, or MagnatesMedia. Write the script strictly as high-impact Markdown narration, including visual b-roll directions in square brackets in the selected tone style: "${selectedTone}". Crucially, each visual b-roll direction in square brackets MUST be written as an exceptionally detailed, industry-standard cinematic direct image generation prompt for Midjourney/DALL-E/Imagen (e.g., specifying exact camera framing like 'Extreme close-up shot', specialized lens specs like '85mm f/1.4 lens, shallow depth of field', lighting dynamics like 'moody volumetric side lighting with dust drifting through daylight rays', color styling like 'steel-blue and dark charcoal tones with warm amber highlights', and clear style coordinates) so it can be fed directly to image generators.${soulInstructions}`,
       }
     });
 
@@ -452,30 +496,68 @@ app.post("/api/enhance-prompt", async (req, res) => {
   }
 });
 
-// 5. TTS (Text-to-Speech) Endpoint using gemini-3.1-flash-tts-preview
+// 5. TTS (Text-to-Speech) Endpoint using gemini-3.1-flash-tts-preview (supports single speaker and co-host Duets)
 app.post("/api/tts", async (req, res) => {
-  const { text, voice } = req.body;
+  const { text, voice, isDuet, voice2 } = req.body;
   if (!text) {
     return res.status(400).json({ error: "Text is required for TTS." });
   }
 
   const selectedVoice = voice || "Kore"; // Puck, Charon, Kore, Fenrir, Zephyr
+  const selectedVoice2 = voice2 || "Zephyr";
 
   try {
     const ai = getGeminiClient();
     
-    // Request content to be spoken using the TTS preview model
+    let promptText = text;
+    let config: any = {
+      responseModalities: ["AUDIO"]
+    };
+
+    if (isDuet) {
+      // Structure dialogue input that alternate Host/Guest lines if tags aren't clear
+      let formattedText = text;
+      if (!text.includes(":") && !text.includes("\n")) {
+        formattedText = `Host: ${text}\nGuest: Fascinating! Let's explore this deeper together.`;
+      } else if (!text.includes(":")) {
+        const lines = text.split("\n").filter((l: string) => l.trim() !== "");
+        formattedText = lines.map((line: string, index: number) => {
+          const speaker = index % 2 === 0 ? "Host" : "Guest";
+          return `${speaker}: ${line}`;
+        }).join("\n");
+      }
+      promptText = formattedText;
+
+      config.speechConfig = {
+        multiSpeakerVoiceConfig: {
+          speakerVoiceConfigs: [
+            {
+              speaker: "Host",
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: selectedVoice }
+              }
+            },
+            {
+              speaker: "Guest",
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: selectedVoice2 }
+              }
+            }
+          ]
+        }
+      };
+    } else {
+      config.speechConfig = {
+        voiceConfig: {
+          prebuiltVoiceConfig: { voiceName: selectedVoice }
+        }
+      };
+    }
+
     const response = await ai.models.generateContent({
       model: "gemini-3.1-flash-tts-preview",
-      contents: [{ parts: [{ text: text }] }],
-      config: {
-        responseModalities: ["AUDIO"],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: selectedVoice }
-          }
-        }
-      }
+      contents: [{ parts: [{ text: promptText }] }],
+      config: config
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
@@ -490,6 +572,129 @@ app.post("/api/tts", async (req, res) => {
     res.json({ 
       error: error.message || "Gemini speech queue busy.",
       useBrowserSpeech: true 
+    });
+  }
+});
+
+// 5.5. Convert script to Co-Host dialogue
+app.post("/api/convert-to-dialogue", async (req, res) => {
+  const { script } = req.body;
+  if (!script) {
+    return res.status(400).json({ error: "Script text is required to convert." });
+  }
+
+  try {
+    const ai = getGeminiClient();
+    const systemInstruction = 
+      "You are an elite podcast producer and voice casting director. " +
+      "Your goal is to transition a monologue video script into a dynamic, highly engaging conversational dialogue between two hosts: 'Host' and 'Guest'. " +
+      "Ensure all key research findings, stats, and facts are preserved naturally. Alternate conversational banter between Host and Guest. " +
+      "Crucially, format each spoken line clearly with 'Host: ...' and 'Guest: ...' tags starting each speaker line. Preserve any detailed cinematic visual bracket cues where they belong.";
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: `Convert the following monologue script into a 2-host conversational dialogue:\n\n${script}`,
+      config: {
+        systemInstruction: systemInstruction,
+      }
+    });
+
+    res.json({ dialogue: response.text || script });
+  } catch (error: any) {
+    console.warn("Dialogue converter busy, running local heuristics conversion...", error.message || error);
+    
+    const lines = script.split("\n").filter((l: string) => l.trim() !== "");
+    let speakerIndex = 0;
+    const formatted = lines.map((line: string) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("[") || trimmed.startsWith("#") || trimmed.startsWith("Narrator:")) {
+        return line;
+      }
+      const prefix = speakerIndex % 2 === 0 ? "Host" : "Guest";
+      speakerIndex++;
+      return `${prefix}: ${trimmed}`;
+    }).join("\n\n");
+
+    res.json({ dialogue: formatted });
+  }
+});
+
+// 5.8. Music Generation Endpoint using Lyria 3 models (Audio Generation Stream)
+app.post("/api/generate-lyria", async (req, res) => {
+  const { prompt, modelType, image } = req.body;
+  if (!prompt) {
+    return res.status(400).json({ error: "Prompt is required for Lyria music generation." });
+  }
+
+  const selectedModel = modelType === "pro" ? "lyria-3-pro-preview" : "lyria-3-clip-preview";
+
+  try {
+    const ai = getGeminiClient();
+
+    let contents: any;
+    if (image) {
+      const split = image.split(",");
+      const base64Data = split[1] || split[0];
+      const mimeType = image.match(/:(.*?);/)?.[1] || "image/jpeg";
+      contents = {
+        parts: [
+          { text: prompt },
+          { inlineData: { data: base64Data, mimeType: mimeType } },
+        ],
+      };
+    } else {
+      contents = prompt;
+    }
+
+    const responseStream = await ai.models.generateContentStream({
+      model: selectedModel,
+      contents: contents,
+    });
+
+    let audioBase64 = "";
+    let lyrics = "";
+    let mimeType = "audio/wav";
+
+    for await (const chunk of responseStream) {
+      const parts = chunk.candidates?.[0]?.content?.parts;
+      if (!parts) continue;
+
+      for (const part of parts) {
+        if (part.inlineData?.data) {
+          if (!audioBase64 && part.inlineData.mimeType) {
+            mimeType = part.inlineData.mimeType;
+          }
+          audioBase64 += part.inlineData.data;
+        }
+        if (part.text && !lyrics) {
+          lyrics = part.text;
+        }
+      }
+    }
+
+    if (!audioBase64) {
+      throw new Error("No audio payload generated from Lyria model stream.");
+    }
+
+    res.json({ 
+      audio: audioBase64,
+      mimeType: mimeType,
+      lyrics: lyrics || "No lyrics compiled."
+    });
+
+  } catch (error: any) {
+    console.error("Lyria generation failed:", error);
+    
+    const isClip = selectedModel === "lyria-3-clip-preview";
+    const title = isClip ? "Sunset Drift (Lyria 3 Clip)" : "Midnight Odyssey (Lyria 3 Pro)";
+    
+    res.json({
+      audio: "",
+      mimeType: "audio/wav",
+      lyrics: `[Lyria offline mode: Generated Theme - ${title}]\n\nLyrics Compiled:\n"Riding through the neon breeze, \nAutonomous minds, cybernetic dreams. \nWe move, we drift, we rise, \nForever searching under electric skies."`,
+      isFallback: true,
+      fallbackTitle: title,
+      fallbackPreset: isClip ? "retro" : "tech-noir"
     });
   }
 });
@@ -696,6 +901,149 @@ app.post("/api/generate-music-prompt", async (req, res) => {
 });
 
 
+// 7.5 Sound Orchestrator Custom Sound Effects (SFX) synthesis generator
+app.post("/api/generate-sfx-prompt", async (req, res) => {
+  const { prompt } = req.body;
+  if (!prompt) {
+    return res.status(400).json({ error: "Prompt is required to orchestrate custom SFX." });
+  }
+
+  try {
+    const ai = getGeminiClient();
+
+    const systemInstruction = 
+      "You are an expert sound designer, foley artist, and synthesizer programmer. " +
+      "Translate natural language sound effects descriptions into exact synthesizer sweep parameters. " +
+      "Adjust frequencies, sweeps, oscillator waveforms, and filters to fit the described sound.";
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: `Design a custom high-quality sound effect using Web Audio subtractive synthesis sweep parameters for this concept: "${prompt}". Translate this into synthesizer configurations.`,
+      config: {
+        systemInstruction: systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            oscillatorType: { 
+              type: Type.STRING, 
+              description: "The oscillator waveform shape, e.g. 'sine', 'sawtooth', 'square', 'triangle'." 
+            },
+            frequencyStart: { 
+              type: Type.INTEGER, 
+              description: "The starting frequency in Hz from 40 to 4000." 
+            },
+            frequencyEnd: { 
+              type: Type.INTEGER, 
+              description: "The ending frequency in Hz from 10 to 8000." 
+            },
+            sweepDuration: { 
+              type: Type.NUMBER, 
+              description: "Duration of synthesizer sweep in seconds, ranging from 0.1 to 3.0." 
+            },
+            filterType: { 
+              type: Type.STRING, 
+              description: "Biquad filter type to shape the audio, e.g. 'lowpass', 'highpass', 'bandpass'." 
+            },
+            filterFrequency: { 
+              type: Type.INTEGER, 
+              description: "Filter frequency cutoff in Hz from 100 to 8000." 
+            },
+            distortionAmount: { 
+              type: Type.INTEGER, 
+              description: "Virtual wave shaping distortion intensity from 0 to 100." 
+            },
+            exponentialSweep: { 
+              type: Type.BOOLEAN, 
+              description: "Whether the pitch transition rises/falls exponentially (recommended for sweeps, drops) or linearly." 
+            },
+            soundDescription: { 
+              type: Type.STRING, 
+              description: "A short 1-sentence description of the resulting sound: e.g. 'Sharp retro sci-fi laser blast'." 
+            },
+            explanation: { 
+              type: Type.STRING, 
+              description: "Why these synthesizer configurations are chosen for the requested sound." 
+            }
+          },
+          required: [
+            "oscillatorType", 
+            "frequencyStart", 
+            "frequencyEnd", 
+            "sweepDuration", 
+            "filterType", 
+            "filterFrequency", 
+            "distortionAmount", 
+            "exponentialSweep", 
+            "soundDescription", 
+            "explanation"
+          ]
+        }
+      }
+    });
+
+    let data = JSON.parse(response.text || "{}");
+    res.json(data);
+  } catch (error: any) {
+    console.warn("SFX synthesizer pilot throttled. Falling back to local foley parameters.", error.message || error);
+    
+    // Choose local fallback parameters based on text
+    const lower = prompt.toLowerCase();
+    let oscillatorType = "sine";
+    let frequencyStart = 350;
+    let frequencyEnd = 1200;
+    let sweepDuration = 0.5;
+    let filterType = "bandpass";
+    let filterFrequency = 2000;
+    let distortionAmount = 15;
+    let exponentialSweep = true;
+    let soundDescription = "Grounded high-retention transition sweep";
+
+    if (lower.includes("laser") || lower.includes("zap") || lower.includes("cyber") || lower.includes("space")) {
+      oscillatorType = "sawtooth";
+      frequencyStart = 2500;
+      frequencyEnd = 80;
+      sweepDuration = 0.25;
+      filterType = "highpass";
+      filterFrequency = 800;
+      distortionAmount = 40;
+      soundDescription = "High energy futuristic laser discharge line";
+    } else if (lower.includes("drop") || lower.includes("bass") || lower.includes("slam") || lower.includes("sub")) {
+      oscillatorType = "sine";
+      frequencyStart = 160;
+      frequencyEnd = 25;
+      sweepDuration = 1.6;
+      filterType = "lowpass";
+      filterFrequency = 350;
+      distortionAmount = 5;
+      soundDescription = "Ultra cinematic sub bass kinetic slam drop";
+    } else if (lower.includes("sparkle") || lower.includes("chime") || lower.includes("ambient") || lower.includes("magic")) {
+      oscillatorType = "triangle";
+      frequencyStart = 1200;
+      frequencyEnd = 3000;
+      sweepDuration = 1.2;
+      filterType = "bandpass";
+      filterFrequency = 4000;
+      distortionAmount = 10;
+      soundDescription = "Ambient shining magical stardust sweep";
+    }
+
+    res.json({
+      oscillatorType,
+      frequencyStart,
+      frequencyEnd,
+      sweepDuration,
+      filterType,
+      filterFrequency,
+      distortionAmount,
+      exponentialSweep,
+      soundDescription: `[LOCAL FOLEY SEED] ${soundDescription}`,
+      explanation: "Configured offline safe mode synthesis parameters directly in the browser foley engine."
+    });
+  }
+});
+
+
 // Smart Local stand-by Copilot logic (provides immediate responses and commands if Gemini is throttled/busy)
 function getLocalCopilotReply(query: string, ctx: any): string {
   const normalized = query.toLowerCase();
@@ -784,12 +1132,21 @@ app.post("/api/chat-capability", async (req, res) => {
     const ai = getGeminiClient();
 
     // Setup visual status info for the system instructions
+    const userSoul = getSoulConfig();
+    const soulInstructions = userSoul ? `
+---
+CRITICAL USER CUSTOM PREFERENCES & PERSONALIZATION GUIDELINES (soul.md specifications):
+The following are the user's specific instructions, tone guidelines, workflow rules, profile preferences, and directives. You MUST follow these to personalize all your responses, ideas, script drafts, and tones:
+${userSoul}
+---
+` : "";
+
     const contextInfo = `
 Current Studio Workspace Context:
 - Active Topic: "${ctx.topic || '(None set yet)'}"
 - Workspace Workflow Phase: "${ctx.phase || 'idle'}" (Possible values: 'idle', 'researching', 'planned', 'scripting', 'completed')
-- Active Module Panel: "${ctx.activeModule || 'studio'}" (Possible value tabs: 'studio', 'audio', 'vision')
-- Active Workflow Step: ${ctx.activeStep || 1} (1: Brief Setup, 2: Storyboard/Research, 3: Script Screenplay)
+- Active Module Panel: "${ctx.activeModule || 'studio'}" (Possible value tabs: 'studio', 'audio', 'vision', 'calendar')
+- Active Workflow Step: ${ctx.activeStep || 1} (1: Brief Setup, 2: Grounded Storyboard, 3: Script Board)
 - Script drafted? ${ctx.hasScript ? 'Yes (Draft loaded)' : 'No'}
 - Plan/Storyboard generated? ${ctx.hasPlan ? 'Yes' : 'No'}
 - Research data available? ${ctx.hasResearch ? 'Yes' : 'No'}
@@ -809,6 +1166,8 @@ You are the elite "Creator Core Copilot", an experienced executive Youtube Produ
 Your purpose is to help the user ideate high-retention topics, design world-class hook suggestions, structure cinematic prompt imagery, and dynamically control/automate features in this web application.
 
 You are friendly, incredibly sharp, and direct. You write in a bold, modern serif aesthetic format, describing visual ideas and statistics with elite craftsmanship.
+
+${soulInstructions}
 
 CRITICAL FEATURE: ADMIN CONTROL INSTRUCTIONS
 For actions requested by users, you have direct administrative power to fill form inputs and control variables in this web app on behalf of the user. To command the UI dashboard to perform actions, append one or more command lines at the absolutely end of your response. 
